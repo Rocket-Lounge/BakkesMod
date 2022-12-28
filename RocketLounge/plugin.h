@@ -4,11 +4,12 @@
 // 'PlayerReplicationInfoWrapper::GetUniqueId': Use GetUniqueIdWrapper instead
 
 #include <string>
+#include <sio_client.h>
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
 #include "bakkesmod/plugin/PluginSettingsWindow.h"
 
-class BakkesPlugin: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
+class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
 {
 	// Inherited via PluginSettingsWindow
 	string GetPluginName() override;
@@ -19,6 +20,15 @@ class BakkesPlugin: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	virtual void onLoad();
 	virtual void onUnload();
 
+	// API functionality
+	sio::client io;
+    bool SioConnected = false;
+    void SioConnect();
+    void SioDisconnect();
+	void SioEmit(string event);
+	void SioEmit(string event, string payload);
+	void SioEmit(string event, sio::message::list const& payload);
+
 	// Game event hooks
-	void onFocusChange(ServerWrapper caller, void* params, string eventName);
+	void onTick(ServerWrapper caller, void* params, string eventName);
 };

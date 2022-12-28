@@ -1,4 +1,4 @@
-# BakkesMod Plugin Template
+# Rocket Lounge BakkesMod Plugin
 
 This template uses `vcpkg` in an effort to decouple external dependencies from source code.
 
@@ -15,22 +15,18 @@ If you're using Visual Studio you can trigger builds with `Ctrl + B`.
 If you're building from command line, you can use `msbuild` in the root of the repo.
 
 ```
-msbuild BakkesPlugin.sln
+msbuild RocketLounge.sln
 ```
 
-## Renaming Placeholders
 
-It is recommended to use your own project/plugin name instead of the `BakkesPlugin` placeholder due to the fact that BakkesMod Console (F6) prefixes logs with class name; eg: `[class BakkesPlugin] RL window is focused`
+Function TAGame.GameEvent_TA.AddCar
+can't call game functions from gui thread https://discord.com/channels/862068148328857700/862081441080410143/886347574339059742
 
-To do this, find and replace all instances of `BakkesPlugin` in both source code and file/directory names.
+code https://discord.com/channels/862068148328857700/864528662060728330/961990003934756884
+https://discord.com/channels/862068148328857700/864528662060728330/961993791949135912
 
-Affected files/directories:
+solved issue https://discord.com/channels/862068148328857700/864528662060728330/962026331145666650
 
-| File/Directory           | Rename | Source |
-|--------------------------|:------:|:------:|
-| `./BakkesPlugin`         |   ✅   |        |
-| `./BakkesPlugin.sln`     |   ✅   |   ✅  |
-| `./BakkesPlugin.vcxproj` |   ✅   |   ✅  |
-| `./Setup.ps1`            |        |    ✅  |
+items list https://github.com/RLBot/RLBotGUI/blob/master/rlbot_gui/gui/csv/items.csv
 
-To change DLL filename update `<TargetName>` prop in `BakkesPlugin.vcxproj`.
+map units https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
