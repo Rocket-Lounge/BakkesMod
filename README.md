@@ -1,6 +1,6 @@
 # Rocket Lounge BakkesMod Plugin
 
-This template uses `vcpkg` in an effort to decouple external dependencies from source code.
+Multiplayer freeplay + spectator mode
 
 ## Getting Started
 
@@ -18,15 +18,17 @@ If you're building from command line, you can use `msbuild` in the root of the r
 msbuild RocketLounge.sln
 ```
 
+## Contributing
 
-Function TAGame.GameEvent_TA.AddCar
-can't call game functions from gui thread https://discord.com/channels/862068148328857700/862081441080410143/886347574339059742
+You will notice a lot of `gameWrapper->Execute()` wrappings. This is due to the fact that [server manipulation must occur in the main game thread](https://discord.com/channels/862068148328857700/862081441080410143/886347574339059742). Settings GUI, Socket.io events, and other tasks run in detached threads to prevent performance disruption and thus must be wrapped to ensure they don't crash your game.
 
-code https://discord.com/channels/862068148328857700/864528662060728330/961990003934756884
-https://discord.com/channels/862068148328857700/864528662060728330/961993791949135912
+### To Do
 
-solved issue https://discord.com/channels/862068148328857700/864528662060728330/962026331145666650
+- Prevent car/ball collisions
+- Semi-transparency for car/ball
+- Spectator mode/takeover POV of others
 
-items list https://github.com/RLBot/RLBotGUI/blob/master/rlbot_gui/gui/csv/items.csv
+### Helpful Links
 
-map units https://github.com/RLBot/RLBot/wiki/Useful-Game-Values
+- [Items List](https://github.com/RLBot/RLBotGUI/blob/master/rlbot_gui/gui/csv/items.csv)
+- [Map Measurements](https://github.com/RLBot/RLBot/wiki/Useful-Game-Values)
