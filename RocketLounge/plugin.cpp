@@ -47,18 +47,6 @@ enum class PlayerData
 	CarRotationPitch,
 	CarRotationYaw,
 	CarRotationRoll,
-	CarInputThrottle,
-	CarInputSteer,
-	CarInputPitch,
-	CarInputYaw,
-	CarInputRoll,
-	CarInputJump,
-	CarInputJumped,
-	CarInputHandbrake,
-	CarInputDodgeForward,
-	CarInputDodgeStrafe,
-	CarInputActivateBoost,
-	CarInputHoldingBoost,
 	END_PLAYER_DATA // this must remain at end of enum
 };
 // https://rl-data-bus.fly.dev/mock/record/steam/76561198213932720
@@ -142,7 +130,6 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	auto myPri = pris.Get(0); if (myPri.IsNull()) return;
 	auto myCar = myPri.GetCar(); if (myCar.IsNull()) return;
 
-	auto myInput = myCar.GetInput();
 	auto myLocation = myCar.GetLocation();
 	auto myVelocity = myCar.GetVelocity();
 	auto myRotation = myCar.GetRotation();
@@ -212,18 +199,6 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 			case PlayerData::CarRotationPitch: self.push(sio::string_message::create(to_string(myRotation.Pitch))); break;
 			case PlayerData::CarRotationYaw: self.push(sio::string_message::create(to_string(myRotation.Yaw))); break;
 			case PlayerData::CarRotationRoll: self.push(sio::string_message::create(to_string(myRotation.Roll))); break;
-			case PlayerData::CarInputThrottle: self.push(sio::string_message::create(to_string(myInput.Throttle))); break;
-			case PlayerData::CarInputSteer: self.push(sio::string_message::create(to_string(myInput.Steer))); break;
-			case PlayerData::CarInputPitch: self.push(sio::string_message::create(to_string(myInput.Pitch))); break;
-			case PlayerData::CarInputYaw: self.push(sio::string_message::create(to_string(myInput.Yaw))); break;
-			case PlayerData::CarInputRoll: self.push(sio::string_message::create(to_string(myInput.Roll))); break;
-			case PlayerData::CarInputDodgeForward: self.push(sio::string_message::create(to_string(myInput.DodgeForward))); break;
-			case PlayerData::CarInputDodgeStrafe: self.push(sio::string_message::create(to_string(myInput.DodgeStrafe))); break;
-			case PlayerData::CarInputHandbrake: self.push(sio::string_message::create(to_string(myInput.Handbrake))); break;
-			case PlayerData::CarInputJump: self.push(sio::string_message::create(to_string(myInput.Jump))); break;
-			case PlayerData::CarInputJumped: self.push(sio::string_message::create(to_string(myInput.Jumped))); break;
-			case PlayerData::CarInputActivateBoost: self.push(sio::string_message::create(to_string(myInput.ActivateBoost))); break;
-			case PlayerData::CarInputHoldingBoost: self.push(sio::string_message::create(to_string(myInput.HoldingBoost))); break;
 		}
 	}
 	
@@ -299,20 +274,6 @@ void RocketLounge::SioConnect()
 			stoi(pieces.at((int)PlayerData::CarRotationPitch)->get_string()),
 			stoi(pieces.at((int)PlayerData::CarRotationYaw)->get_string()),
 			stoi(pieces.at((int)PlayerData::CarRotationRoll)->get_string()),
-		}, {
-			stof(pieces.at((int)PlayerData::CarInputThrottle)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputSteer)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputPitch)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputYaw)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputRoll)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputDodgeForward)->get_string()),
-			stof(pieces.at((int)PlayerData::CarInputDodgeStrafe)->get_string()),
-			stoul(pieces.at((int)PlayerData::CarInputHandbrake)->get_string()),
-			stoul(pieces.at((int)PlayerData::CarInputJump)->get_string()),
-			stoul(pieces.at((int)PlayerData::CarInputActivateBoost)->get_string()),
-			// these are always empty?
-			1, // stoul(pieces.at((int)PlayerData::CarInputHoldingBoost)->get_string()),
-			1, // stoul(pieces.at((int)PlayerData::CarInputJumped)->get_string()),
 		});
 	});
 }

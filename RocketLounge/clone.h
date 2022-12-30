@@ -12,7 +12,6 @@ class Clone
 	public:
 	int PriIdx, BallIdx;
 	string Slug, DisplayName;
-    ControllerInput CarInput;
     Rotator CarRotation, BallRotation;
     Vector CarLocation, CarVelocity, BallLocation, BallVelocity;
 	Clone(string slug, string displayName)
@@ -47,9 +46,8 @@ class Clone
 
 	}
 
-    void SetCar(Vector location, Vector velocity, Rotator rotation, ControllerInput input)
+    void SetCar(Vector location, Vector velocity, Rotator rotation)
     {
-        this->CarInput = input;
         this->CarVelocity = velocity;
         this->CarLocation = location;
         this->CarRotation = rotation;
@@ -64,7 +62,6 @@ class Clone
                 auto botPri = pris.Get(this->PriIdx); if (botPri.IsNull()) return;
                 auto botCar = botPri.GetCar(); if (botCar.IsNull()) return;
                 auto botName = botPri.GetPlayerName().ToString();
-                // botCar.SetInput(this->CarInput);
                 botCar.SetLocation(this->CarLocation);
                 botCar.SetVelocity(this->CarVelocity);
                 botCar.SetRotation(this->CarRotation);
