@@ -24,9 +24,11 @@ You will notice a lot of `gameWrapper->Execute()` wrappings. This is due to the 
 
 ### To Do
 
+- Not using input data anymore, could remove and save half of bandwidth usage
 - Prevent car/ball collisions
 - Semi-transparency for car/ball
 - Spectator mode/takeover POV of others
+- Crashing from GUI and pausing? Maybe need to stop updating clone when paused
 
 ### Helpful Links
 

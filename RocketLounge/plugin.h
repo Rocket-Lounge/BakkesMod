@@ -9,6 +9,12 @@
 #include "bakkesmod/plugin/pluginwindow.h"
 #include "bakkesmod/plugin/PluginSettingsWindow.h"
 
+template <typename F>
+void HttpGet(string url, F callback) {
+	CurlRequest req; req.url = url;
+	HttpWrapper::SendCurlRequest(req, [callback](int code, string result) { callback(result); });
+}
+
 class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod::Plugin::PluginSettingsWindow
 {
 	// Inherited via PluginSettingsWindow
@@ -19,6 +25,11 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	// Plugin manager hooks
 	virtual void onLoad();
 	virtual void onUnload();
+
+	bool IsRecording = false;
+	void ToggleRecording();
+	bool IsTrimming = false;
+	void ToggleTrimming();
 
 	// API functionality
 	sio::client io;

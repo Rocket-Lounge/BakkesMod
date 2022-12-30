@@ -18,10 +18,50 @@ constexpr auto PluginVersion = stringify(V_MAJOR) "." stringify(V_MINOR) "." str
 BAKKESMOD_PLUGIN(RocketLounge, PluginName, PluginVersion, PLUGINTYPE_FREEPLAY);
 
 // slug, displayName, lastSeenTime
+int MyTickRate = 60;
+string MySlug = "";
+string FilterPlaceholder = "Filter...";
 map<string, bool> SlugSubs = {};
 map<string, int> SlugLastSeen = {};
 map<string, string> SlugDisplayNames = {};
 
+enum class PlayerData
+{
+	Slug, // this is contractual
+	DisplayName,
+	BallLocationX,
+	BallLocationY,
+	BallLocationZ,
+	BallVelocityX,
+	BallVelocityY,
+	BallVelocityZ,
+	BallRotationPitch,
+	BallRotationYaw,
+	BallRotationRoll,
+	CarLocationX,
+	CarLocationY,
+	CarLocationZ,
+	CarVelocityX,
+	CarVelocityY,
+	CarVelocityZ,
+	CarRotationPitch,
+	CarRotationYaw,
+	CarRotationRoll,
+	CarInputThrottle,
+	CarInputSteer,
+	CarInputPitch,
+	CarInputYaw,
+	CarInputRoll,
+	CarInputJump,
+	CarInputJumped,
+	CarInputHandbrake,
+	CarInputDodgeForward,
+	CarInputDodgeStrafe,
+	CarInputActivateBoost,
+	CarInputHoldingBoost,
+	END_PLAYER_DATA // this must remain at end of enum
+};
+// https://rl-data-bus.fly.dev/mock/record/steam/76561198213932720
 void RocketLounge::onLoad()
 {
 	Global::GameWrapper = gameWrapper;
@@ -31,9 +71,11 @@ void RocketLounge::onLoad()
 	Log::SetWriteLevel(Log::Level::Info);
 
 	new Cvar("enable_mpfp", true);
+	// new Cvar("api_host", "http://localhost:8080");
 	new Cvar("api_host", "http://rl-data-bus.fly.dev");
 	new Cvar("io_threads", false);
 	new Cvar("ui_use_slugs", false);
+	new Cvar("player_list_filter", FilterPlaceholder);
 
 	// Auto connect API if we can...
 	int HALF_SECOND = 500; // I really hate magic numbers
@@ -53,13 +95,44 @@ void RocketLounge::onLoad()
 
 void RocketLounge::onUnload()
 {
-	
+	this->SioDisconnect();
 }
 
+void RocketLounge::ToggleRecording()
+{
+	string url = Cvar::Get("api_host")->toString() + "/mock/record/" + MySlug + "/" + to_string(MyTickRate);
+	HttpGet(url, [=](string status) { this->IsRecording = status == "recording"; });
+}
+
+void RocketLounge::ToggleTrimming()
+{
+	string url = Cvar::Get("api_host")->toString() + "/mock/trim/" + MySlug;
+	HttpGet(url, [=](string status) { this->IsTrimming = status == "recording"; });
+}
+
+int measuredTicks = 0;
+int lastTickRateMeasurement = 0;
 void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 {
+	if (!lastTickRateMeasurement)
+	{
+		lastTickRateMeasurement = timestamp();
+	}
+	else
+	{
+		if (timestamp() - lastTickRateMeasurement >= 1)
+		{
+			MyTickRate = measuredTicks;
+			measuredTicks = 0;
+			lastTickRateMeasurement = 0;
+		}
+		else
+		{
+			measuredTicks++;
+		}
+	}
 	auto server = gameWrapper->GetGameEventAsServer();
-	if (!gameWrapper->IsInFreeplay() || server.IsNull())
+	if (server.IsNull())
 	{
 		CloneManager::DestroyClones();
 		return;
@@ -68,6 +141,22 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	auto pris = server.GetPRIs();
 	auto myPri = pris.Get(0); if (myPri.IsNull()) return;
 	auto myCar = myPri.GetCar(); if (myCar.IsNull()) return;
+
+	auto myInput = myCar.GetInput();
+	auto myLocation = myCar.GetLocation();
+	auto myVelocity = myCar.GetVelocity();
+	auto myRotation = myCar.GetRotation();
+	string myName = myPri.GetPlayerName().ToString();
+	auto platId = myPri.GetUniqueIdWrapper().GetPlatform();
+
+	string myPlatform = platId == OnlinePlatform_Steam ? "steam" : "epic";
+	string myPlatformUserId = myPlatform == "steam" ? to_string(myPri.GetUniqueId().ID) : myName;
+	MySlug = myPlatform + "/" + myPlatformUserId;
+	auto balls = server.GetGameBalls();
+	auto myBall = balls.Get(0); if (myBall.IsNull()) return;
+	auto ballLocation = myBall.GetLocation();
+	auto ballVelocity = myBall.GetVelocity();
+	auto ballRotation = myBall.GetRotation();
 
 	// bool nearWall = false;
 	// if (nearWall)
@@ -85,40 +174,58 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	// 	myCar.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
 	// }
 
-	auto myInput = myCar.GetInput();
-	auto myLocation = myCar.GetLocation();
-	string myName = myPri.GetPlayerName().ToString();
-	auto platId = myPri.GetUniqueIdWrapper().GetPlatform();
-
-	string myPlatform = platId == OnlinePlatform_Steam ? "steam" : "epic";
-	string myPlatformUserId = myPlatform == "steam" ? to_string(myPri.GetUniqueId().ID) : myName;
-	string mySlug = myPlatform + "/" + myPlatformUserId;
-	auto balls = server.GetGameBalls();
-	auto myBall = balls.Get(0); if (myBall.IsNull()) return;
-	auto ballLocation = myBall.GetLocation();
-
-	sio::message::list self(mySlug);
-	self.push(sio::string_message::create(myName));
-	self.push(sio::string_message::create(to_string(ballLocation.X)));
-	self.push(sio::string_message::create(to_string(ballLocation.Y)));
-	self.push(sio::string_message::create(to_string(ballLocation.Z)));
-
-	self.push(sio::string_message::create(to_string(myLocation.X)));
-	self.push(sio::string_message::create(to_string(myLocation.Y)));
-	self.push(sio::string_message::create(to_string(myLocation.Z)));
+	if (!gameWrapper->IsInFreeplay())
+	{
+		CloneManager::DestroyClones();
+		return;
+	}
 	
-	self.push(sio::string_message::create(to_string(myInput.Throttle)));
-	self.push(sio::string_message::create(to_string(myInput.Steer)));
-	self.push(sio::string_message::create(to_string(myInput.Pitch)));
-	self.push(sio::string_message::create(to_string(myInput.Yaw)));
-	self.push(sio::string_message::create(to_string(myInput.Roll)));
-	self.push(sio::string_message::create(to_string(myInput.DodgeForward)));
-	self.push(sio::string_message::create(to_string(myInput.DodgeStrafe)));
-	self.push(sio::string_message::create(to_string(myInput.Handbrake)));
-	self.push(sio::string_message::create(to_string(myInput.Jump)));
-	self.push(sio::string_message::create(to_string(myInput.ActivateBoost)));
-	self.push(sio::string_message::create(to_string(myInput.HoldingBoost)));
-	self.push(sio::string_message::create(to_string(myInput.Jumped)));
+	if (!Cvar::Get("enable_mpfp")->toBool())
+	{
+		CloneManager::DestroyClones();
+		return;
+	}
+	
+	CloneManager::ReflectClones();
+
+	sio::message::list self(MySlug);
+	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
+	{
+		switch((PlayerData)i)
+		{
+			case PlayerData::DisplayName: self.push(sio::string_message::create(myName)); break;
+			case PlayerData::BallLocationX: self.push(sio::string_message::create(to_string(ballLocation.X))); break;
+			case PlayerData::BallLocationY: self.push(sio::string_message::create(to_string(ballLocation.Y))); break;
+			case PlayerData::BallLocationZ: self.push(sio::string_message::create(to_string(ballLocation.Z))); break;
+			case PlayerData::BallVelocityX: self.push(sio::string_message::create(to_string(ballVelocity.X))); break;
+			case PlayerData::BallVelocityY: self.push(sio::string_message::create(to_string(ballVelocity.Y))); break;
+			case PlayerData::BallVelocityZ: self.push(sio::string_message::create(to_string(ballVelocity.Z))); break;
+			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); break;
+			case PlayerData::BallRotationYaw: self.push(sio::string_message::create(to_string(ballRotation.Yaw))); break;
+			case PlayerData::BallRotationRoll: self.push(sio::string_message::create(to_string(ballRotation.Roll))); break;
+			case PlayerData::CarLocationX: self.push(sio::string_message::create(to_string(myLocation.X))); break;
+			case PlayerData::CarLocationY: self.push(sio::string_message::create(to_string(myLocation.Y))); break;
+			case PlayerData::CarLocationZ: self.push(sio::string_message::create(to_string(myLocation.Z))); break;
+			case PlayerData::CarVelocityX: self.push(sio::string_message::create(to_string(myVelocity.X))); break;
+			case PlayerData::CarVelocityY: self.push(sio::string_message::create(to_string(myVelocity.Y))); break;
+			case PlayerData::CarVelocityZ: self.push(sio::string_message::create(to_string(myVelocity.Z))); break;
+			case PlayerData::CarRotationPitch: self.push(sio::string_message::create(to_string(myRotation.Pitch))); break;
+			case PlayerData::CarRotationYaw: self.push(sio::string_message::create(to_string(myRotation.Yaw))); break;
+			case PlayerData::CarRotationRoll: self.push(sio::string_message::create(to_string(myRotation.Roll))); break;
+			case PlayerData::CarInputThrottle: self.push(sio::string_message::create(to_string(myInput.Throttle))); break;
+			case PlayerData::CarInputSteer: self.push(sio::string_message::create(to_string(myInput.Steer))); break;
+			case PlayerData::CarInputPitch: self.push(sio::string_message::create(to_string(myInput.Pitch))); break;
+			case PlayerData::CarInputYaw: self.push(sio::string_message::create(to_string(myInput.Yaw))); break;
+			case PlayerData::CarInputRoll: self.push(sio::string_message::create(to_string(myInput.Roll))); break;
+			case PlayerData::CarInputDodgeForward: self.push(sio::string_message::create(to_string(myInput.DodgeForward))); break;
+			case PlayerData::CarInputDodgeStrafe: self.push(sio::string_message::create(to_string(myInput.DodgeStrafe))); break;
+			case PlayerData::CarInputHandbrake: self.push(sio::string_message::create(to_string(myInput.Handbrake))); break;
+			case PlayerData::CarInputJump: self.push(sio::string_message::create(to_string(myInput.Jump))); break;
+			case PlayerData::CarInputJumped: self.push(sio::string_message::create(to_string(myInput.Jumped))); break;
+			case PlayerData::CarInputActivateBoost: self.push(sio::string_message::create(to_string(myInput.ActivateBoost))); break;
+			case PlayerData::CarInputHoldingBoost: self.push(sio::string_message::create(to_string(myInput.HoldingBoost))); break;
+		}
+	}
 	
 	this->SioEmit("self", self);
 }
@@ -155,6 +262,7 @@ void RocketLounge::SioConnect()
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
 	});
 	this->io.socket()->on("player", [&](sio::event& ev) {
+		if (!gameWrapper->IsInFreeplay()) return;
 		auto pieces = ev.get_messages();
 		string slug = pieces.at(0)->get_string();
 		string displayName = pieces.at(1)->get_string();
@@ -167,30 +275,45 @@ void RocketLounge::SioConnect()
 			return;
 		}
 		CloneManager::UseClone(slug, displayName)->SetBall({
-			stof(pieces.at(2)->get_string()),
-			stof(pieces.at(3)->get_string()),
-			stof(pieces.at(4)->get_string()),
+			stof(pieces.at((int)PlayerData::BallLocationX)->get_string()),
+			stof(pieces.at((int)PlayerData::BallLocationY)->get_string()),
+			stof(pieces.at((int)PlayerData::BallLocationZ)->get_string()),
+		}, {
+			stof(pieces.at((int)PlayerData::BallVelocityX)->get_string()),
+			stof(pieces.at((int)PlayerData::BallVelocityY)->get_string()),
+			stof(pieces.at((int)PlayerData::BallVelocityZ)->get_string()),
+		}, {
+			stoi(pieces.at((int)PlayerData::BallRotationPitch)->get_string()),
+			stoi(pieces.at((int)PlayerData::BallRotationYaw)->get_string()),
+			stoi(pieces.at((int)PlayerData::BallRotationRoll)->get_string()),
 		});
 		CloneManager::UseClone(slug, displayName)->SetCar({
-			stof(pieces.at(5)->get_string()),
-			stof(pieces.at(6)->get_string()),
-			stof(pieces.at(7)->get_string()),
+			stof(pieces.at((int)PlayerData::CarLocationX)->get_string()),
+			stof(pieces.at((int)PlayerData::CarLocationY)->get_string()),
+			stof(pieces.at((int)PlayerData::CarLocationZ)->get_string()),
 		}, {
-			stof(pieces.at(8)->get_string()),
-			stof(pieces.at(9)->get_string()),
-			stof(pieces.at(10)->get_string()),
-			stof(pieces.at(11)->get_string()),
-			stof(pieces.at(12)->get_string()),
-			stof(pieces.at(13)->get_string()),
-			stof(pieces.at(14)->get_string()),
-			stoul(pieces.at(15)->get_string()),
-			stoul(pieces.at(16)->get_string()),
-			stoul(pieces.at(17)->get_string()),
-			1, // stoul(pieces.at(17)->get_string()), // these are always empty
-			1, // stoul(pieces.at(18)->get_string()),
+			stof(pieces.at((int)PlayerData::CarVelocityX)->get_string()),
+			stof(pieces.at((int)PlayerData::CarVelocityY)->get_string()),
+			stof(pieces.at((int)PlayerData::CarVelocityZ)->get_string()),
+		}, {
+			stoi(pieces.at((int)PlayerData::CarRotationPitch)->get_string()),
+			stoi(pieces.at((int)PlayerData::CarRotationYaw)->get_string()),
+			stoi(pieces.at((int)PlayerData::CarRotationRoll)->get_string()),
+		}, {
+			stof(pieces.at((int)PlayerData::CarInputThrottle)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputSteer)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputPitch)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputYaw)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputRoll)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputDodgeForward)->get_string()),
+			stof(pieces.at((int)PlayerData::CarInputDodgeStrafe)->get_string()),
+			stoul(pieces.at((int)PlayerData::CarInputHandbrake)->get_string()),
+			stoul(pieces.at((int)PlayerData::CarInputJump)->get_string()),
+			stoul(pieces.at((int)PlayerData::CarInputActivateBoost)->get_string()),
+			// these are always empty?
+			1, // stoul(pieces.at((int)PlayerData::CarInputHoldingBoost)->get_string()),
+			1, // stoul(pieces.at((int)PlayerData::CarInputJumped)->get_string()),
 		});
-		CloneManager::UseClone(slug, displayName)->ReflectCar();
-		CloneManager::UseClone(slug, displayName)->ReflectBall();
 	});
 }
 // Emit in separate thread to reduce performance impact
@@ -248,7 +371,15 @@ void RocketLounge::RenderSettings()
 			this->SioDisconnect();
 		}
 		ImGui::Spacing();
-		Cvar::Get("io_threads")->RenderCheckbox(" Enable multi-threading ");
+		// Cvar::Get("io_threads")->RenderCheckbox(" Enable multi-threading ");
+		string recordLabel = "   " + string(this->IsRecording ? "Save Recording" : "Start Recording") + "   ";
+		string trimLabel = "   " + string(this->IsTrimming ? "Save Trimming" : "Start Trimming") + "   ";
+		if (ImGui::Button(recordLabel.c_str())) this->ToggleRecording();
+		ImGui::SameLine();
+		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
+		ImGui::SameLine();
+		string tickRateLabel = "   Tick Rate: " + to_string(MyTickRate);
+		ImGui::Text(tickRateLabel.c_str());
 		ImGui::Spacing();
 	}
 	else
@@ -278,13 +409,25 @@ void RocketLounge::RenderSettings()
 		if (Cvar::Get("enable_mpfp")->toBool())
 		{
 			ImGui::Spacing();
-			ImGui::Text("Available Players");
+			ImGui::Text("Available Players     ");
+			ImGui::SameLine();
+			Cvar::Get("player_list_filter")->RenderSmallInput("", 96);
 			for (const auto &[slug, seenTime] : SlugLastSeen)
 			{
+				if (slug == MySlug) continue;
 				if (SlugSubs.count(slug)) continue;
 				int secAgo = timestamp() - seenTime;
 				if (secAgo > 1) return; // if data is 1s or older its stale
 				string label = usingSlugs ? slug : SlugDisplayNames[slug];
+
+				string filter = Cvar::Get("player_list_filter")->toString();
+				if (filter.length() && filter != FilterPlaceholder)
+				{
+					if (label.find(filter) == string::npos)
+					{
+						continue;
+					}
+				}
 				string fullLabel = "   " + label + "   ";
 				if (ImGui::Button(fullLabel.c_str()))
 				{

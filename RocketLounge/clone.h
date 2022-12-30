@@ -10,11 +10,11 @@
 class Clone
 {
 	public:
-    ControllerInput CarInput;
-    Vector CarLocation;
-    Vector BallLocation;
 	int PriIdx, BallIdx;
 	string Slug, DisplayName;
+    ControllerInput CarInput;
+    Rotator CarRotation, BallRotation;
+    Vector CarLocation, CarVelocity, BallLocation, BallVelocity;
 	Clone(string slug, string displayName)
 	{
 		this->Slug = slug;
@@ -47,10 +47,12 @@ class Clone
 
 	}
 
-    void SetCar(Vector location, ControllerInput input)
+    void SetCar(Vector location, Vector velocity, Rotator rotation, ControllerInput input)
     {
         this->CarInput = input;
+        this->CarVelocity = velocity;
         this->CarLocation = location;
+        this->CarRotation = rotation;
     }
     void ReflectCar()
     {
@@ -62,15 +64,19 @@ class Clone
                 auto botPri = pris.Get(this->PriIdx); if (botPri.IsNull()) return;
                 auto botCar = botPri.GetCar(); if (botCar.IsNull()) return;
                 auto botName = botPri.GetPlayerName().ToString();
+                // botCar.SetInput(this->CarInput);
                 botCar.SetLocation(this->CarLocation);
-                botCar.SetInput(this->CarInput);
+                botCar.SetVelocity(this->CarVelocity);
+                botCar.SetRotation(this->CarRotation);
 			}
 		});
     }
 
-    void SetBall(Vector location)
+    void SetBall(Vector location, Vector velocity, Rotator rotation)
     {
         this->BallLocation = location;
+        this->BallVelocity = velocity;
+        this->BallRotation = rotation;
     }
     void ReflectBall()
     {
@@ -81,6 +87,8 @@ class Clone
                 auto balls = server.GetGameBalls();
                 auto botBall = balls.Get(this->BallIdx); if (botBall.IsNull()) return;
                 botBall.SetLocation(this->BallLocation);
+                botBall.SetVelocity(this->BallVelocity);
+                botBall.SetRotation(this->BallRotation);
 			}
 		});
     }
@@ -98,6 +106,18 @@ class CloneManager
             CloneManager::CloneMap[slug] = new Clone(slug, displayName);
         }
         return CloneManager::CloneMap[slug];
+    }
+
+    static void ReflectClones()
+    {
+        if (Global::GameWrapper->IsPaused()) return;
+        Global::GameWrapper->Execute([](...){
+            for (const auto &[slug, clone] : CloneManager::CloneMap)
+            {
+                clone->ReflectCar();
+                clone->ReflectBall();
+            }
+		});
     }
 
     static void DestroyClones()
