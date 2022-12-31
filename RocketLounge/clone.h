@@ -110,11 +110,13 @@ class CloneManager
     static Clone UseClone(string slug, string displayName, int carBody)
     {
         auto pair = CloneManager::Clones.find(slug);
-        if (pair != CloneManager::Clones.end()) return pair->second;
-        Log::Info("Creating new clone for " + slug + " (" + displayName + ")");
-        auto createdPair = make_pair(slug, Clone(slug, displayName, carBody));
-        CloneManager::Clones.emplace(createdPair);
-        return createdPair.second;
+        if (pair == CloneManager::Clones.end())
+        {
+            Log::Info("Creating new clone for " + slug + " (" + displayName + ")");
+            CloneManager::Clones.emplace(make_pair(slug, Clone(slug, displayName, carBody)));
+            pair = CloneManager::Clones.find(slug);
+        }
+        return pair->second;
     }
 
     static void ReflectClones()
