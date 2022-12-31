@@ -257,7 +257,7 @@ void RocketLounge::SioConnect()
 		this->SlugLastSeen[slug] = timestamp();
 		this->SlugDisplayNames[slug] = displayName;
 		if (!this->SlugSubs.count(slug)) return;
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetBall({
+		CloneManager::UseClone(slug, displayName, stoi(carBodyStr)).SetBall({
 			stof(pieces.at((int)PlayerData::BallLocationX)->get_string()),
 			stof(pieces.at((int)PlayerData::BallLocationY)->get_string()),
 			stof(pieces.at((int)PlayerData::BallLocationZ)->get_string()),
@@ -270,7 +270,7 @@ void RocketLounge::SioConnect()
 			stoi(pieces.at((int)PlayerData::BallRotationYaw)->get_string()),
 			stoi(pieces.at((int)PlayerData::BallRotationRoll)->get_string()),
 		});
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetCar({
+		CloneManager::UseClone(slug, displayName, stoi(carBodyStr)).SetCar({
 			stof(pieces.at((int)PlayerData::CarLocationX)->get_string()),
 			stof(pieces.at((int)PlayerData::CarLocationY)->get_string()),
 			stof(pieces.at((int)PlayerData::CarLocationZ)->get_string()),

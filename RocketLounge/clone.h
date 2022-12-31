@@ -106,25 +106,25 @@ class Clone
 class CloneManager
 {
 	public:
-    static inline map<string, Clone*> CloneMap = {};
-    static Clone* UseClone(string slug, string displayName, int carBody)
+    static inline map<string, Clone> Clones = {};
+    static Clone UseClone(string slug, string displayName, int carBody)
     {
-        if (!CloneManager::CloneMap.count(slug) || CloneManager::CloneMap[slug] == NULL)
-        {
-            Log::Error("Creating new clone for " + slug + " (" + displayName + ")");
-            CloneManager::CloneMap[slug] = new Clone(slug, displayName, carBody);
-        }
-        return CloneManager::CloneMap[slug];
+        auto pair = CloneManager::Clones.find(slug);
+        if (pair != CloneManager::Clones.end()) return pair->second;
+        Log::Info("Creating new clone for " + slug + " (" + displayName + ")");
+        auto createdPair = make_pair(slug, Clone(slug, displayName, carBody));
+        CloneManager::Clones.emplace(createdPair);
+        return createdPair.second;
     }
 
     static void ReflectClones()
     {
         if (Global::GameWrapper->IsPaused()) return;
         Global::GameWrapper->Execute([](...){
-            for (const auto &[slug, clone] : CloneManager::CloneMap)
+            for (auto &[slug, clone] : CloneManager::Clones)
             {
-                clone->ReflectCar();
-                clone->ReflectBall();
+                clone.ReflectCar();
+                clone.ReflectBall();
             }
 		});
     }
@@ -132,7 +132,7 @@ class CloneManager
     static void DestroyClones()
     {
         Global::GameWrapper->Execute([](...){
-            for (const auto &[slug, clone] : CloneManager::CloneMap)
+            for (const auto &[slug, clone] : CloneManager::Clones)
             {
                 CloneManager::DestroyClone(slug);
             }
@@ -141,22 +141,23 @@ class CloneManager
 
     static void DestroyClone(string slug)
     {
-        if (!CloneManager::CloneMap.count(slug)) return;
-        Global::GameWrapper->Execute([slug](...){
-            auto clone = CloneManager::CloneMap[slug];
-            Log::Info("Removing car and ball for " + clone->DisplayName + " (" + slug + ")");
+        auto pair = CloneManager::Clones.find(slug);
+        if (pair != CloneManager::Clones.end()) return;
+        auto clone = pair->second;
+        Global::GameWrapper->Execute([slug, clone](...){
+            Log::Info("Removing car and ball for " + clone.DisplayName + " (" + slug + ")");
             auto server = Global::GameWrapper->GetGameEventAsServer();
             if (!server.IsNull())
             {
                 auto balls = server.GetGameBalls();
                 auto players = server.GetPlayers();
-                auto botPlayer = players.Get(clone->PriIdx);
+                auto botPlayer = players.Get(clone.PriIdx);
                 server.RemovePlayer(botPlayer);
-                balls.Get(clone->BallIdx).DoDestroy();
-                Log::Info("Car and ball models destroyed for " + clone->DisplayName + " (" + slug + ")");
+                balls.Get(clone.BallIdx).DoDestroy();
+                Log::Info("Car and ball models destroyed for " + clone.DisplayName + " (" + slug + ")");
             }
-            CloneManager::CloneMap.erase(slug);
-            Log::Info("Lookup key removed for " + clone->DisplayName + " (" + slug + ")");
+            CloneManager::Clones.erase(slug);
+            Log::Info("Lookup key removed for " + clone.DisplayName + " (" + slug + ")");
 		});
     }
 };
