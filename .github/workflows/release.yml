@@ -31,7 +31,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1.0.2
     - name: Install Deps
       run: .\Setup.ps1
-      working-directory: ${{ env.GITHUB_WORKSPACE }}\plugin
+      working-directory: plugin
     - name: Build
       run: msbuild /m /p:Configuration=Release /p:BakkesModPath=$env:GITHUB_WORKSPACE\plugin /p:Environment=GitHub $env:GITHUB_WORKSPACE\plugin\${{ env.SOLUTION_NAME }}.sln
 
