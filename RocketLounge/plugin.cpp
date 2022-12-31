@@ -7,8 +7,6 @@
 #include "clone.h"
 #include "version.h"
 #include <imgui_stdlib.h> // ImGui::InputText
-#include <nlohmann/json.hpp>
-using json = nlohmann::json;
 using namespace std;
 
 string defaultApiHost = "http://rocketlounge.gg";
