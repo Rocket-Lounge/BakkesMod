@@ -29,9 +29,19 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Cache Deps
+      id: cache-vcpkg
+      uses: actions/cache@v3
+      with:
+        path: plugin\RocketLounge\vcpkg
+        key: ${{ hashFiles('plugin\Setup.ps1') }}
+  
     - name: Install Deps
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
       run: .\Setup.ps1
       working-directory: plugin
+
     - name: Build
       run: msbuild /m /p:Configuration=Release /p:BakkesModPath=$env:GITHUB_WORKSPACE\plugin /p:Environment=GitHub $env:GITHUB_WORKSPACE\plugin\${{ env.SOLUTION_NAME }}.sln
 
