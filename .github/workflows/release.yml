@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+
+env:
+  SOLUTION_NAME: RocketLounge
+  DLL_NAME: A1RocketLounge
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Clone Repository
+      uses: actions/checkout@v3
+      with:
+        path: plugin
+
+    - name: Clone BakkesmodSDK
+      uses: actions/checkout@v3
+      with:
+        repository: bakkesmodorg/BakkesModSDK
+        path: plugin\bakkesmodsdk
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+  
+    - name: Install Deps
+      run: .\Setup.ps1
+      working-directory: plugin
+
+    - name: Build
+      run: msbuild /m /p:Configuration=Release /p:BakkesModPath=$env:GITHUB_WORKSPACE\plugin /p:Environment=GitHub $env:GITHUB_WORKSPACE\plugin\${{ env.SOLUTION_NAME }}.sln
+
+    - name: Zip
+      uses: vimtor/action-zip@v1
+      with:
+        files: plugin\plugins\${{ env.DLL_NAME }}.dll
+        dest: ${{ env.DLL_NAME }}-${{ github.ref_name }}.zip
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/') || github.ref_name == 'main'
+      with:
+        name: ${{ env.DLL_NAME }}-${{ github.ref_name }}
+        prerelease: ${{ github.ref_type == 'branch' }}
+        files: ${{ env.DLL_NAME }}-${{ github.ref_name }}.zip
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
