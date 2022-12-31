@@ -106,51 +106,13 @@ class Clone
 class CloneManager
 {
 	public:
-    static inline vector<Clone> Clones = {};
-    static inline map<string, int> CloneIdx = {};
-    static Clone UseClone(string slug, string displayName, int carBody)
-    {
-        if (!CloneManager::CloneIdx.count(slug) || CloneManager::CloneIdx[slug] == CLONE_DELETED)
-        {
-            Log::Error("Creating new clone for " + slug + " (" + displayName + ")");
-            CloneManager::CloneIdx[slug] = this->Clones.size();
-            CloneManager::Clones.push_back(Clone(slug, displayName, carBody));
-        }
-        return CloneManager::Clones.at(CloneManager::CloneIdx[slug]);
-    }
-
-    static void ReflectClones()
-    {
-        if (Global::GameWrapper->IsPaused()) return;
-        Global::GameWrapper->Execute([](...){
-            for (const auto &[slug, clone] : CloneManager::CloneMap)
-            {
-                clone->ReflectCar();
-                clone->ReflectBall();
-            }
-		});
-    }
-
-    static void DestroyClones()
-    {
-        Global::GameWrapper->Execute([](...){
-            for (const auto &[slug, clone] : CloneManager::CloneMap)
-            {
-                CloneManager::DestroyClone(slug);
-            }
-		});
-    }
-
-    static void DestroyClone(string slug)
-    {
-	public:
     static inline map<string, Clone*> CloneMap = {};
-    static Clone* UseClone(string slug, string displayName)
+    static Clone* UseClone(string slug, string displayName, int carBody)
     {
         if (!CloneManager::CloneMap.count(slug) || CloneManager::CloneMap[slug] == NULL)
         {
             Log::Error("Creating new clone for " + slug + " (" + displayName + ")");
-            CloneManager::CloneMap[slug] = new Clone(slug, displayName);
+            CloneManager::CloneMap[slug] = new Clone(slug, displayName, carBody);
         }
         return CloneManager::CloneMap[slug];
     }
