@@ -41,14 +41,22 @@ jobs:
       uses: vimtor/action-zip@v1
       with:
         files: plugin\plugins\${{ env.DLL_NAME }}.dll
-        dest: ${{ env.DLL_NAME }}-${{ github.ref_name }}.zip
+        dest: ${{ env.DLL_NAME }}.zip
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/') || github.ref_name == 'main'
+      uses: "marvinpinto/action-automatic-releases@v1.2.1"
+      if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: ${{ env.DLL_NAME }}-${{ github.ref_name }}
-        prerelease: ${{ github.ref_type == 'branch' }}
-        files: ${{ env.DLL_NAME }}-${{ github.ref_name }}.zip
-      env:
-        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        repo_token: "${{ env.GITHUB_TOKEN }}"
+        prerelease: false
+        files: ${{ env.DLL_NAME }}.zip
+
+    - name: Create Pre-Release
+      uses: "marvinpinto/action-automatic-releases@v1.2.1"
+      if: github.ref_name == 'main'
+      with:
+        repo_token: "${{ env.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: true
+        title: "Development Build"
+        files: ${{ env.DLL_NAME }}.zip
