@@ -1,10 +1,8 @@
 #include "pch.h"
 #include "cvar.h"
-#include "match.h"
 #include "plugin.h"
 #include "global.h"
 #include "logging.h"
-#include "overlay.h"
 #include "timer.h"
 #include "clone.h"
 #include "version.h"
@@ -13,43 +11,42 @@
 using json = nlohmann::json;
 using namespace std;
 
+string defaultApiHost = "http://rocketlounge.gg";
+// string defaultApiHost = "http://localhost:8080";
+string FilterPlaceholder = "Filter...";
+
 const char * PluginName = "A1 Rocket Lounge"; // To change DLL filename use <TargetName> in *.vcxproj
 constexpr auto PluginVersion = stringify(V_MAJOR) "." stringify(V_MINOR) "." stringify(V_PATCH) "." stringify(V_BUILD);
 BAKKESMOD_PLUGIN(RocketLounge, PluginName, PluginVersion, PLUGINTYPE_FREEPLAY);
 
-// slug, displayName, lastSeenTime
-int MyTickRate = 60;
-string MySlug = "";
-string FilterPlaceholder = "Filter...";
-map<string, bool> SlugSubs = {};
-map<string, int> SlugLastSeen = {};
-map<string, string> SlugDisplayNames = {};
-
+// Changing order will break previous versions of plugin
 enum class PlayerData
 {
 	Slug, // this is contractual
+	// Version, // string(PluginVersion)
 	DisplayName,
-	BallLocationX,
-	BallLocationY,
-	BallLocationZ,
-	BallVelocityX,
-	BallVelocityY,
-	BallVelocityZ,
-	BallRotationPitch,
-	BallRotationYaw,
-	BallRotationRoll,
+	CarBody,
 	CarLocationX,
 	CarLocationY,
 	CarLocationZ,
 	CarVelocityX,
 	CarVelocityY,
 	CarVelocityZ,
-	CarRotationPitch,
 	CarRotationYaw,
 	CarRotationRoll,
+	CarRotationPitch,
+	BallLocationX,
+	BallLocationY,
+	BallLocationZ,
+	BallVelocityX,
+	BallVelocityY,
+	BallVelocityZ,
+	BallRotationYaw,
+	BallRotationRoll,
+	BallRotationPitch,
 	END_PLAYER_DATA // this must remain at end of enum
 };
-// https://rl-data-bus.fly.dev/mock/record/steam/76561198213932720
+
 void RocketLounge::onLoad()
 {
 	Global::GameWrapper = gameWrapper;
@@ -58,11 +55,13 @@ void RocketLounge::onLoad()
 	Log::SetPrintLevel(Log::Level::Info);
 	Log::SetWriteLevel(Log::Level::Info);
 
-	new Cvar("enable_mpfp", true);
-	// new Cvar("api_host", "http://localhost:8080");
-	new Cvar("api_host", "http://rl-data-bus.fly.dev");
-	new Cvar("io_threads", false);
+	new Cvar("enable_mpfp", true, [=](string name, bool curValue, bool oldValue){
+		if (!curValue && oldValue) this->DestroyStuff();
+	});
+	new Cvar("api_host", defaultApiHost);
+	new Cvar("enable_ui", true);
 	new Cvar("ui_use_slugs", false);
+	new Cvar("enable_collisions", false);
 	new Cvar("player_list_filter", FilterPlaceholder);
 
 	// Auto connect API if we can...
@@ -88,14 +87,34 @@ void RocketLounge::onUnload()
 
 void RocketLounge::ToggleRecording()
 {
-	string url = Cvar::Get("api_host")->toString() + "/mock/record/" + MySlug + "/" + to_string(MyTickRate);
+	string url = Cvar::Get("api_host")->toString() + "/mock/record/" + this->MySlug + "/" + to_string(this->MyTickRate);
 	HttpGet(url, [=](string status) { this->IsRecording = status == "recording"; });
 }
 
 void RocketLounge::ToggleTrimming()
 {
-	string url = Cvar::Get("api_host")->toString() + "/mock/trim/" + MySlug;
+	string url = Cvar::Get("api_host")->toString() + "/mock/trim/" + this->MySlug;
 	HttpGet(url, [=](string status) { this->IsTrimming = status == "recording"; });
+}
+
+bool RocketLounge::DataFlowAllowed()
+{
+	auto server = gameWrapper->GetGameEventAsServer();
+	if (!server.IsNull() && Cvar::Get("enable_mpfp")->toBool())
+	{
+		if (gameWrapper->IsInFreeplay()) return true;
+		if (gameWrapper->IsInCustomTraining()) return true;
+	}
+	return false;
+}
+
+void RocketLounge::DestroyStuff()
+{
+	
+	if (this->DataFlowAllowed()) CloneManager::DestroyClones();
+	this->SlugSubs.clear();
+	this->SlugLastSeen.clear();
+	this->SlugDisplayNames.clear();
 }
 
 int measuredTicks = 0;
@@ -110,7 +129,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	{
 		if (timestamp() - lastTickRateMeasurement >= 1)
 		{
-			MyTickRate = measuredTicks;
+			this->MyTickRate = measuredTicks;
 			measuredTicks = 0;
 			lastTickRateMeasurement = 0;
 		}
@@ -119,16 +138,17 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 			measuredTicks++;
 		}
 	}
-	auto server = gameWrapper->GetGameEventAsServer();
-	if (server.IsNull())
+	if (!this->DataFlowAllowed())
 	{
-		CloneManager::DestroyClones();
+		this->DestroyStuff();
 		return;
 	}
 
+	auto server = gameWrapper->GetGameEventAsServer();
 	auto pris = server.GetPRIs();
 	auto myPri = pris.Get(0); if (myPri.IsNull()) return;
 	auto myCar = myPri.GetCar(); if (myCar.IsNull()) return;
+	int myCarBody = myCar.GetLoadoutBody();
 
 	auto myLocation = myCar.GetLocation();
 	auto myVelocity = myCar.GetVelocity();
@@ -138,7 +158,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 
 	string myPlatform = platId == OnlinePlatform_Steam ? "steam" : "epic";
 	string myPlatformUserId = myPlatform == "steam" ? to_string(myPri.GetUniqueId().ID) : myName;
-	MySlug = myPlatform + "/" + myPlatformUserId;
+	this->MySlug = myPlatform + "/" + myPlatformUserId;
 	auto balls = server.GetGameBalls();
 	auto myBall = balls.Get(0); if (myBall.IsNull()) return;
 	auto ballLocation = myBall.GetLocation();
@@ -160,22 +180,10 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	// 	myCar.GetCollisionComponent().SetRBChannel(6);
 	// 	myCar.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
 	// }
-
-	if (!gameWrapper->IsInFreeplay())
-	{
-		CloneManager::DestroyClones();
-		return;
-	}
-	
-	if (!Cvar::Get("enable_mpfp")->toBool())
-	{
-		CloneManager::DestroyClones();
-		return;
-	}
 	
 	CloneManager::ReflectClones();
 
-	sio::message::list self(MySlug);
+	sio::message::list self(this->MySlug);
 	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
 	{
 		switch((PlayerData)i)
@@ -190,6 +198,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); break;
 			case PlayerData::BallRotationYaw: self.push(sio::string_message::create(to_string(ballRotation.Yaw))); break;
 			case PlayerData::BallRotationRoll: self.push(sio::string_message::create(to_string(ballRotation.Roll))); break;
+			case PlayerData::CarBody: self.push(sio::string_message::create(to_string(myCarBody))); break;
 			case PlayerData::CarLocationX: self.push(sio::string_message::create(to_string(myLocation.X))); break;
 			case PlayerData::CarLocationY: self.push(sio::string_message::create(to_string(myLocation.Y))); break;
 			case PlayerData::CarLocationZ: self.push(sio::string_message::create(to_string(myLocation.Z))); break;
@@ -224,32 +233,33 @@ void RocketLounge::SioConnect()
 	this->io.connect(apiHost);
 	this->io.set_open_listener([&]() {
 		this->SioConnected = true;
-        Global::Notify::Success("API Connected", "You're good to go!");
+        Global::Notify::Success("Lounge Connected", string("Successfully connected to " + apiHost));
 	});
 	this->io.set_close_listener([&](sio::client::close_reason const& reason) {
+		this->DestroyStuff();
 		this->SioConnected = false;
-		string msg = reason == sio::client::close_reason::close_reason_normal
-			? "Your connection was closed"
-			: "Your connection was dropped";
-        Global::Notify::Error("API Disconnected", msg);
+		string msg = reason == sio::client::close_reason::close_reason_normal ? "closed" : "dropped";
+		string fullMsg = "Connection to " + apiHost + " was " + msg;
+        Global::Notify::Error("Lounge Disconnected", fullMsg);
 	});
 	this->io.socket()->on("notification", [&](sio::event& ev) {
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
 	});
 	this->io.socket()->on("player", [&](sio::event& ev) {
-		if (!gameWrapper->IsInFreeplay()) return;
+		if (!this->DataFlowAllowed()) return;
 		auto pieces = ev.get_messages();
-		string slug = pieces.at(0)->get_string();
-		string displayName = pieces.at(1)->get_string();
-		SlugLastSeen[slug] = timestamp();
-		SlugDisplayNames[slug] = displayName;
-		if (!SlugSubs.count(slug)) return;
-		if (!Cvar::Get("enable_mpfp")->toBool())
+		if (pieces.size() != (int)PlayerData::END_PLAYER_DATA) return;
+		string slug = pieces.at((int)PlayerData::Slug)->get_string();
+		string displayName = pieces.at((int)PlayerData::DisplayName)->get_string();
+		string carBodyStr = pieces.at((int)PlayerData::CarBody)->get_string();
+		if (!this->SlugLastSeen.count(slug))
 		{
-			CloneManager::DestroyClones();
-			return;
+			Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
 		}
-		CloneManager::UseClone(slug, displayName)->SetBall({
+		this->SlugLastSeen[slug] = timestamp();
+		this->SlugDisplayNames[slug] = displayName;
+		if (!this->SlugSubs.count(slug)) return;
+		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetBall({
 			stof(pieces.at((int)PlayerData::BallLocationX)->get_string()),
 			stof(pieces.at((int)PlayerData::BallLocationY)->get_string()),
 			stof(pieces.at((int)PlayerData::BallLocationZ)->get_string()),
@@ -262,7 +272,7 @@ void RocketLounge::SioConnect()
 			stoi(pieces.at((int)PlayerData::BallRotationYaw)->get_string()),
 			stoi(pieces.at((int)PlayerData::BallRotationRoll)->get_string()),
 		});
-		CloneManager::UseClone(slug, displayName)->SetCar({
+		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetCar({
 			stof(pieces.at((int)PlayerData::CarLocationX)->get_string()),
 			stof(pieces.at((int)PlayerData::CarLocationY)->get_string()),
 			stof(pieces.at((int)PlayerData::CarLocationZ)->get_string()),
@@ -278,43 +288,18 @@ void RocketLounge::SioConnect()
 	});
 }
 // Emit in separate thread to reduce performance impact
-void RocketLounge::SioEmit(string event) {
-	if (!this->SioConnected) return;
-	// Log::Info("Socket.io Emission: " + event);
-	if (Cvar::Get("io_threads")->toBool()) {
-		thread t([=]() { this->io.socket()->emit(event); });
-		t.detach();
-	} else {
-		this->io.socket()->emit(event);
-	}
-}
-void RocketLounge::SioEmit(string event, string payload) {
-	if (!this->SioConnected) return;
-	// Log::Info("Socket.io Emission: " + event);
-	if (Cvar::Get("io_threads")->toBool()) {
-		thread t([=]() { this->io.socket()->emit(event, payload); });
-		t.detach();
-	} else {
-		this->io.socket()->emit(event, payload);
-	}
-}
-void RocketLounge::SioEmit(string event, sio::message::list const& payload) {
-	if (!this->SioConnected) return;
-	// Log::Info("Socket.io Emission: " + event);
-	if (Cvar::Get("io_threads")->toBool()) {
-		thread t([=]() { this->io.socket()->emit(event, payload); });
-		t.detach();
-	} else {
-		this->io.socket()->emit(event, payload);
-	}
-}
-
-
+void RocketLounge::SioEmit(string event) {  this->io.socket()->emit(event); }
+void RocketLounge::SioEmit(string event, string payload) { this->io.socket()->emit(event, payload); }
+void RocketLounge::SioEmit(string event, sio::message::list const& payload) { this->io.socket()->emit(event, payload); }
 
 void RocketLounge::RenderSettings()
 {
 
 	ImGui::NewLine();
+	Cvar::Get("enable_ui")->RenderCheckbox(" Enable UI ");
+	if (!Cvar::Get("enable_ui")->toBool()) return;
+	ImGui::SameLine();
+	Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
 	ImGui::Columns(2, "split", false);
 	
 	if (this->SioConnected)
@@ -332,14 +317,13 @@ void RocketLounge::RenderSettings()
 			this->SioDisconnect();
 		}
 		ImGui::Spacing();
-		// Cvar::Get("io_threads")->RenderCheckbox(" Enable multi-threading ");
 		string recordLabel = "   " + string(this->IsRecording ? "Save Recording" : "Start Recording") + "   ";
 		string trimLabel = "   " + string(this->IsTrimming ? "Save Trimming" : "Start Trimming") + "   ";
 		if (ImGui::Button(recordLabel.c_str())) this->ToggleRecording();
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
 		ImGui::SameLine();
-		string tickRateLabel = "   Tick Rate: " + to_string(MyTickRate);
+		string tickRateLabel = "   Tick Rate: " + to_string(this->MyTickRate);
 		ImGui::Text(tickRateLabel.c_str());
 		ImGui::Spacing();
 	}
@@ -367,19 +351,19 @@ void RocketLounge::RenderSettings()
 		Cvar::Get("enable_mpfp")->RenderCheckbox(" Multiplayer freeplay ");
 		bool usingSlugs = Cvar::Get("ui_use_slugs")->toBool();
 
-		if (Cvar::Get("enable_mpfp")->toBool())
+		if (this->DataFlowAllowed())
 		{
 			ImGui::Spacing();
 			ImGui::Text("Available Players     ");
 			ImGui::SameLine();
 			Cvar::Get("player_list_filter")->RenderSmallInput("", 96);
-			for (const auto &[slug, seenTime] : SlugLastSeen)
+			for (const auto &[slug, seenTime] : this->SlugLastSeen)
 			{
-				if (slug == MySlug) continue;
-				if (SlugSubs.count(slug)) continue;
+				if (slug == this->MySlug) continue;
+				if (this->SlugSubs.count(slug)) continue;
 				int secAgo = timestamp() - seenTime;
 				if (secAgo > 1) return; // if data is 1s or older its stale
-				string label = usingSlugs ? slug : SlugDisplayNames[slug];
+				string label = usingSlugs ? slug : this->SlugDisplayNames[slug];
 
 				string filter = Cvar::Get("player_list_filter")->toString();
 				if (filter.length() && filter != FilterPlaceholder)
@@ -392,7 +376,7 @@ void RocketLounge::RenderSettings()
 				string fullLabel = "   " + label + "   ";
 				if (ImGui::Button(fullLabel.c_str()))
 				{
-					SlugSubs[slug] = true;
+					this->SlugSubs[slug] = true;
 				}
 			}
 		}
@@ -411,14 +395,14 @@ void RocketLounge::RenderSettings()
 
 			ImGui::Spacing();
 			ImGui::Text("Players in Session");
-			for (const auto &[slug, subbed] : SlugSubs)
+			for (const auto &[slug, subbed] : this->SlugSubs)
 			{
-				string label = usingSlugs ? slug : SlugDisplayNames[slug];
+				string label = usingSlugs ? slug : this->SlugDisplayNames[slug];
 				string fullLabel = "   " + label + "   ";
 				if (ImGui::Button(fullLabel.c_str()))
 				{
 					CloneManager::DestroyClone(slug);
-					SlugSubs.erase(slug);
+					this->SlugSubs.erase(slug);
 				}
 			}
 		}

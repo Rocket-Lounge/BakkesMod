@@ -10,13 +10,14 @@
 class Clone
 {
 	public:
-	int PriIdx, BallIdx;
+	int PriIdx, BallIdx, CarBody;
 	string Slug, DisplayName;
     Rotator CarRotation, BallRotation;
     Vector CarLocation, CarVelocity, BallLocation, BallVelocity;
-	Clone(string slug, string displayName)
+	Clone(string slug, string displayName, int carBody)
 	{
 		this->Slug = slug;
+        this->CarBody = carBody;
 		this->DisplayName = displayName;
         // Must execute in main game thread (since this can be triggered by socket event or other event in alt thread)
 		Global::GameWrapper->Execute([this](...){
@@ -24,23 +25,34 @@ class Clone
 			if (!server.IsNull())
 			{
                 // Spawn car clone
-				server.SpawnBot(23, this->DisplayName);
+				server.SpawnBot(this->CarBody, this->DisplayName);
                 auto pris = server.GetPRIs();
                 this->PriIdx = pris.Count() - 1;
                 auto botPri = pris.Get(this->PriIdx); if (botPri.IsNull()) return;
                 auto botCar = botPri.GetCar(); if (botCar.IsNull()) return;
                 botCar.GetAIController().DoNothing();
-                botCar.GetCollisionComponent().SetRBChannel(6);
-                botCar.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
-                botCar.GetCollisionComponent().SetBlockRigidBody2(0);
+                if (!Cvar::Get("enable_collisions")->toBool())
+                {
+                    botCar.GetCollisionComponent().SetRBChannel(6);
+                    botCar.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
+                    botCar.GetCollisionComponent().SetBlockRigidBody2(0);
+                }
                 // Spawn ball clone
-                server.SpawnBall(Vector{0, 0, 1000}, true, false);
-                auto balls = server.GetGameBalls();
-                this->BallIdx = balls.Count() - 1;
-                auto botBall = balls.Get(this->BallIdx);
-                botBall.GetCollisionComponent().SetRBChannel(6);
-                botBall.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
-                botBall.GetCollisionComponent().SetBlockRigidBody2(0);
+                // if (!Global::GameWrapper->IsInCustomTraining()) 
+                // {
+                    server.SpawnBall(Vector{0, 0, 1000}, true, false);
+                    auto balls = server.GetGameBalls();
+                    this->BallIdx = balls.Count() - 1;
+                    auto botBall = balls.Get(this->BallIdx);
+                    // this currently doesn't work for cars unless you apply to both bot and your car but then
+                    // you go through walls and doing janky logic around that smelled so fugg it for now
+                    if (!Cvar::Get("enable_collisions")->toBool())
+                    {
+                        botBall.GetCollisionComponent().SetRBChannel(6);
+                        botBall.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
+                        botBall.GetCollisionComponent().SetBlockRigidBody2(0);
+                    }
+                // }
 			}
 		});
 
@@ -93,6 +105,44 @@ class Clone
 
 class CloneManager
 {
+	public:
+    static inline vector<Clone> Clones = {};
+    static inline map<string, int> CloneIdx = {};
+    static Clone UseClone(string slug, string displayName, int carBody)
+    {
+        if (!CloneManager::CloneIdx.count(slug) || CloneManager::CloneIdx[slug] == CLONE_DELETED)
+        {
+            Log::Error("Creating new clone for " + slug + " (" + displayName + ")");
+            CloneManager::CloneIdx[slug] = this->Clones.size();
+            CloneManager::Clones.push_back(Clone(slug, displayName, carBody));
+        }
+        return CloneManager::Clones.at(CloneManager::CloneIdx[slug]);
+    }
+
+    static void ReflectClones()
+    {
+        if (Global::GameWrapper->IsPaused()) return;
+        Global::GameWrapper->Execute([](...){
+            for (const auto &[slug, clone] : CloneManager::CloneMap)
+            {
+                clone->ReflectCar();
+                clone->ReflectBall();
+            }
+		});
+    }
+
+    static void DestroyClones()
+    {
+        Global::GameWrapper->Execute([](...){
+            for (const auto &[slug, clone] : CloneManager::CloneMap)
+            {
+                CloneManager::DestroyClone(slug);
+            }
+		});
+    }
+
+    static void DestroyClone(string slug)
+    {
 	public:
     static inline map<string, Clone*> CloneMap = {};
     static Clone* UseClone(string slug, string displayName)

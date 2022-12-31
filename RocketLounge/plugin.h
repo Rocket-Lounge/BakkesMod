@@ -22,6 +22,10 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void RenderSettings() override;
 	void SetImGuiContext(uintptr_t ctx) override;
 
+	// Settings helpers
+	void RenderSettingsConnectedMainMenu();
+	void RenderSettingsConnectedFreePlay();
+
 	// Plugin manager hooks
 	virtual void onLoad();
 	virtual void onUnload();
@@ -30,6 +34,14 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void ToggleRecording();
 	bool IsTrimming = false;
 	void ToggleTrimming();
+
+	int MyTickRate = 60;
+	string MySlug = "";
+	map<string, bool> SlugSubs = {};
+	map<string, int> SlugLastSeen = {};
+	map<string, string> SlugDisplayNames = {};
+	bool DataFlowAllowed();
+	void DestroyStuff();
 
 	// API functionality
 	sio::client io;
