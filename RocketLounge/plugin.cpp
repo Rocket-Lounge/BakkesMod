@@ -194,6 +194,8 @@ void RocketLounge::MeasureTickRate()
 
 void RocketLounge::SioDisconnect()
 {
+	this->SioConnected = false;
+	this->DestroyStuff();
     this->io.close();
 }
 
@@ -213,7 +215,6 @@ void RocketLounge::SioConnect()
         Global::Notify::Success("Lounge Connected", string("Successfully connected to " + apiHost));
 	});
 	this->io.set_close_listener([this, apiHost](sio::client::close_reason const& reason) {
-		this->DestroyStuff();
 		this->SioConnected = false;
 		string msg = reason == sio::client::close_reason::close_reason_normal ? "closed" : "dropped";
 		string fullMsg = "Connection to " + apiHost + " was " + msg;
