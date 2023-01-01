@@ -47,7 +47,7 @@ class Log {
     inline static bool VERBOSE = false;
     inline static Level PRINT_LEVEL = Log::Level::Info;
     inline static Level WRITE_LEVEL = Log::Level::Warn;
-    inline static string WRITE_FILEPATH = "a1m.log";
+    inline static string WRITE_FILEPATH = "a1-rocket-lounge.log";
     static void Handler(string payload, Level level, string pFile, int pLine)
     {
         string prefix = !Log::VERBOSE ? "" : "[" + pFile + ":" + to_string(pLine) + "]\n";

@@ -24,6 +24,7 @@ You will notice a lot of `gameWrapper->Execute()` wrappings. This is due to the 
 
 ### To Do
 
+- PRI Idx moves when destroying (WIP assigning UID to PRI)
 - Data sanitization
 - Only emit ball data on hits? Might make touching the ball of others feel more organic. If we emit slug of who touched it, slug of ball owner, and location etc data it might feel cleaner
 - Prevent car/ball collisions

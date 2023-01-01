@@ -53,11 +53,7 @@ void RocketLounge::onLoad()
 	Log::SetPrintLevel(Log::Level::Info);
 	Log::SetWriteLevel(Log::Level::Info);
 
-	new Cvar("enable_mpfp", true, [=](string name, bool curValue, bool oldValue){
-		if (!curValue && oldValue) this->DestroyStuff();
-	});
 	new Cvar("api_host", defaultApiHost);
-	new Cvar("enable_ui", true);
 	new Cvar("ui_use_slugs", false);
 	new Cvar("enable_collisions", false);
 	new Cvar("player_list_filter", FilterPlaceholder);
@@ -97,8 +93,7 @@ void RocketLounge::ToggleTrimming()
 
 bool RocketLounge::DataFlowAllowed()
 {
-	auto server = gameWrapper->GetGameEventAsServer();
-	if (!server.IsNull() && Cvar::Get("enable_mpfp")->toBool())
+	if (this->SioConnected)
 	{
 		if (gameWrapper->IsInFreeplay()) return true;
 		if (gameWrapper->IsInCustomTraining()) return true;
@@ -108,16 +103,74 @@ bool RocketLounge::DataFlowAllowed()
 
 void RocketLounge::DestroyStuff()
 {
-	
-	if (this->DataFlowAllowed()) CloneManager::DestroyClones();
+	CloneManager::DestroyClones();
 	this->SlugSubs.clear();
 	this->SlugLastSeen.clear();
 	this->SlugDisplayNames.clear();
 }
 
+void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
+{
+	if (!this->DataFlowAllowed()) return this->DestroyStuff();
+	this->MeasureTickRate();
+
+	auto server = gameWrapper->GetCurrentGameState(); if (server.IsNull()) return this->DestroyStuff();
+	auto player = gameWrapper->GetPlayerController(); if (player.IsNull()) return this->DestroyStuff();
+	auto pri = player.GetPRI(); if (pri.IsNull()) return this->DestroyStuff();
+
+	string displayName = pri.GetPlayerName().ToString();
+	string platform = pri.GetUniqueIdWrapper().GetPlatform() == OnlinePlatform_Steam ? "steam" : "epic";
+	string platformUserId = platform == "steam" ? to_string(pri.GetUniqueId().ID) : displayName;
+	this->MySlug = platform + "/" + platformUserId;
+
+	auto car = pri.GetCar(); if (car.IsNull()) return this->DestroyStuff();
+	int carBody = car.GetLoadoutBody();
+	auto carLocation = car.GetLocation();
+	auto carVelocity = car.GetVelocity();
+	auto carRotation = car.GetRotation();
+
+	auto balls = server.GetGameBalls(); if (!balls.Count()) return this->DestroyStuff();
+	auto ball = balls.Get(0); if (ball.IsNull()) return this->DestroyStuff();
+	auto ballLocation = ball.GetLocation();
+	auto ballVelocity = ball.GetVelocity();
+	auto ballRotation = ball.GetRotation();
+	
+	CloneManager::ReflectClones();
+
+	sio::message::list self(this->MySlug);
+	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
+	{
+		switch((PlayerData)i)
+		{
+			case PlayerData::DisplayName: 		self.push(sio::string_message::create(displayName)); 					break;
+			case PlayerData::BallLocationX: 	self.push(sio::string_message::create(to_string(ballLocation.X))); 		break;
+			case PlayerData::BallLocationY: 	self.push(sio::string_message::create(to_string(ballLocation.Y))); 		break;
+			case PlayerData::BallLocationZ: 	self.push(sio::string_message::create(to_string(ballLocation.Z))); 		break;
+			case PlayerData::BallVelocityX: 	self.push(sio::string_message::create(to_string(ballVelocity.X))); 		break;
+			case PlayerData::BallVelocityY: 	self.push(sio::string_message::create(to_string(ballVelocity.Y))); 		break;
+			case PlayerData::BallVelocityZ: 	self.push(sio::string_message::create(to_string(ballVelocity.Z))); 		break;
+			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); 	break;
+			case PlayerData::BallRotationYaw: 	self.push(sio::string_message::create(to_string(ballRotation.Yaw))); 	break;
+			case PlayerData::BallRotationRoll: 	self.push(sio::string_message::create(to_string(ballRotation.Roll))); 	break;
+			case PlayerData::CarBody: 			self.push(sio::string_message::create(to_string(carBody))); 			break;
+			case PlayerData::CarLocationX: 		self.push(sio::string_message::create(to_string(carLocation.X))); 		break;
+			case PlayerData::CarLocationY: 		self.push(sio::string_message::create(to_string(carLocation.Y))); 		break;
+			case PlayerData::CarLocationZ: 		self.push(sio::string_message::create(to_string(carLocation.Z))); 		break;
+			case PlayerData::CarVelocityX: 		self.push(sio::string_message::create(to_string(carVelocity.X))); 		break;
+			case PlayerData::CarVelocityY: 		self.push(sio::string_message::create(to_string(carVelocity.Y))); 		break;
+			case PlayerData::CarVelocityZ: 		self.push(sio::string_message::create(to_string(carVelocity.Z))); 		break;
+			case PlayerData::CarRotationPitch: 	self.push(sio::string_message::create(to_string(carRotation.Pitch))); 	break;
+			case PlayerData::CarRotationYaw: 	self.push(sio::string_message::create(to_string(carRotation.Yaw))); 	break;
+			case PlayerData::CarRotationRoll: 	self.push(sio::string_message::create(to_string(carRotation.Roll))); 	break;
+		}
+	}
+	
+	this->SioEmit("self", self);
+}
+
 int measuredTicks = 0;
 int lastTickRateMeasurement = 0;
-void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
+void RocketLounge::MeasureTickRate()
 {
 	if (!lastTickRateMeasurement)
 	{
@@ -136,82 +189,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 			measuredTicks++;
 		}
 	}
-	if (!this->DataFlowAllowed())
-	{
-		this->DestroyStuff();
-		return;
-	}
-
-	auto server = gameWrapper->GetGameEventAsServer();
-	auto pris = server.GetPRIs();
-	auto myPri = pris.Get(0); if (myPri.IsNull()) return;
-	auto myCar = myPri.GetCar(); if (myCar.IsNull()) return;
-	int myCarBody = myCar.GetLoadoutBody();
-
-	auto myLocation = myCar.GetLocation();
-	auto myVelocity = myCar.GetVelocity();
-	auto myRotation = myCar.GetRotation();
-	string myName = myPri.GetPlayerName().ToString();
-	auto platId = myPri.GetUniqueIdWrapper().GetPlatform();
-
-	string myPlatform = platId == OnlinePlatform_Steam ? "steam" : "epic";
-	string myPlatformUserId = myPlatform == "steam" ? to_string(myPri.GetUniqueId().ID) : myName;
-	this->MySlug = myPlatform + "/" + myPlatformUserId;
-	auto balls = server.GetGameBalls();
-	auto myBall = balls.Get(0); if (myBall.IsNull()) return;
-	auto ballLocation = myBall.GetLocation();
-	auto ballVelocity = myBall.GetVelocity();
-	auto ballRotation = myBall.GetRotation();
-
-	// bool nearWall = false;
-	// if (nearWall)
-	// {
-	// 	myCar.GetCollisionComponent().SetRBChannel(0);
-	// 	myCar.GetCollisionComponent().SetRBCollidesWithChannel(0, 0);
-	// 	myCar.GetCollisionComponent().SetBlockRigidBody2(1);
-	// }
-	// else
-	// {
-	// 	// disable body collisions
-	// 	myCar.GetCollisionComponent().SetBlockRigidBody2(0);
-	// 	// disable wheel collisions
-	// 	myCar.GetCollisionComponent().SetRBChannel(6);
-	// 	myCar.GetCollisionComponent().SetRBCollidesWithChannel(3, 0);
-	// }
-	
-	CloneManager::ReflectClones();
-
-	sio::message::list self(this->MySlug);
-	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
-	{
-		switch((PlayerData)i)
-		{
-			case PlayerData::DisplayName: self.push(sio::string_message::create(myName)); break;
-			case PlayerData::BallLocationX: self.push(sio::string_message::create(to_string(ballLocation.X))); break;
-			case PlayerData::BallLocationY: self.push(sio::string_message::create(to_string(ballLocation.Y))); break;
-			case PlayerData::BallLocationZ: self.push(sio::string_message::create(to_string(ballLocation.Z))); break;
-			case PlayerData::BallVelocityX: self.push(sio::string_message::create(to_string(ballVelocity.X))); break;
-			case PlayerData::BallVelocityY: self.push(sio::string_message::create(to_string(ballVelocity.Y))); break;
-			case PlayerData::BallVelocityZ: self.push(sio::string_message::create(to_string(ballVelocity.Z))); break;
-			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); break;
-			case PlayerData::BallRotationYaw: self.push(sio::string_message::create(to_string(ballRotation.Yaw))); break;
-			case PlayerData::BallRotationRoll: self.push(sio::string_message::create(to_string(ballRotation.Roll))); break;
-			case PlayerData::CarBody: self.push(sio::string_message::create(to_string(myCarBody))); break;
-			case PlayerData::CarLocationX: self.push(sio::string_message::create(to_string(myLocation.X))); break;
-			case PlayerData::CarLocationY: self.push(sio::string_message::create(to_string(myLocation.Y))); break;
-			case PlayerData::CarLocationZ: self.push(sio::string_message::create(to_string(myLocation.Z))); break;
-			case PlayerData::CarVelocityX: self.push(sio::string_message::create(to_string(myVelocity.X))); break;
-			case PlayerData::CarVelocityY: self.push(sio::string_message::create(to_string(myVelocity.Y))); break;
-			case PlayerData::CarVelocityZ: self.push(sio::string_message::create(to_string(myVelocity.Z))); break;
-			case PlayerData::CarRotationPitch: self.push(sio::string_message::create(to_string(myRotation.Pitch))); break;
-			case PlayerData::CarRotationYaw: self.push(sio::string_message::create(to_string(myRotation.Yaw))); break;
-			case PlayerData::CarRotationRoll: self.push(sio::string_message::create(to_string(myRotation.Roll))); break;
-		}
-	}
-	
-	this->SioEmit("self", self);
 }
-
 
 void RocketLounge::SioDisconnect()
 {
@@ -229,28 +207,28 @@ void RocketLounge::SioConnect()
 	// map<string, string> handshake { { "key", apiKey } };
 	// this->io.connect(apiHost, handshake);
 	this->io.connect(apiHost);
-	this->io.set_open_listener([&]() {
+	this->io.set_open_listener([this, apiHost]() {
 		this->SioConnected = true;
         Global::Notify::Success("Lounge Connected", string("Successfully connected to " + apiHost));
 	});
-	this->io.set_close_listener([&](sio::client::close_reason const& reason) {
+	this->io.set_close_listener([this, apiHost](sio::client::close_reason const& reason) {
 		this->DestroyStuff();
 		this->SioConnected = false;
 		string msg = reason == sio::client::close_reason::close_reason_normal ? "closed" : "dropped";
 		string fullMsg = "Connection to " + apiHost + " was " + msg;
         Global::Notify::Error("Lounge Disconnected", fullMsg);
 	});
-	this->io.socket()->on("notification", [&](sio::event& ev) {
+	this->io.socket()->on("notification", [this](sio::event& ev) {
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
 	});
-	this->io.socket()->on("player", [&](sio::event& ev) {
+	this->io.socket()->on("player", [this](sio::event& ev) {
 		if (!this->DataFlowAllowed()) return;
 		auto pieces = ev.get_messages();
 		if (pieces.size() != (int)PlayerData::END_PLAYER_DATA) return;
 		string slug = pieces.at((int)PlayerData::Slug)->get_string();
 		string displayName = pieces.at((int)PlayerData::DisplayName)->get_string();
 		string carBodyStr = pieces.at((int)PlayerData::CarBody)->get_string();
-		if (!this->SlugLastSeen.count(slug))
+		if (!this->SlugLastSeen.count(slug) && slug != this->MySlug)
 		{
 			Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
 		}
@@ -294,8 +272,6 @@ void RocketLounge::RenderSettings()
 {
 
 	ImGui::NewLine();
-	Cvar::Get("enable_ui")->RenderCheckbox(" Enable UI ");
-	if (!Cvar::Get("enable_ui")->toBool()) return;
 	ImGui::SameLine();
 	Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
 	ImGui::Columns(2, "split", false);
@@ -346,35 +322,36 @@ void RocketLounge::RenderSettings()
 	{
 		ImGui::Columns(2, "split", false);
 
-		Cvar::Get("enable_mpfp")->RenderCheckbox(" Multiplayer freeplay ");
 		bool usingSlugs = Cvar::Get("ui_use_slugs")->toBool();
-
 		if (this->DataFlowAllowed())
 		{
 			ImGui::Spacing();
 			ImGui::Text("Available Players     ");
 			ImGui::SameLine();
 			Cvar::Get("player_list_filter")->RenderSmallInput("", 96);
-			for (const auto &[slug, seenTime] : this->SlugLastSeen)
+			if (this->SlugLastSeen.size())
 			{
-				if (slug == this->MySlug) continue;
-				if (this->SlugSubs.count(slug)) continue;
-				int secAgo = timestamp() - seenTime;
-				if (secAgo > 1) return; // if data is 1s or older its stale
-				string label = usingSlugs ? slug : this->SlugDisplayNames[slug];
+				for (const auto &[slug, seenTime] : this->SlugLastSeen)
+				{
+					if (slug == this->MySlug) continue;
+					if (this->SlugSubs.count(slug)) continue;
+					int secAgo = timestamp() - seenTime;
+					if (secAgo > 1) return; // if data is 1s or older its stale
+					string label = usingSlugs ? slug : this->SlugDisplayNames[slug];
 
-				string filter = Cvar::Get("player_list_filter")->toString();
-				if (filter.length() && filter != FilterPlaceholder)
-				{
-					if (label.find(filter) == string::npos)
+					string filter = Cvar::Get("player_list_filter")->toString();
+					if (filter.length() && filter != FilterPlaceholder)
 					{
-						continue;
+						if (label.find(filter) == string::npos)
+						{
+							continue;
+						}
 					}
-				}
-				string fullLabel = "   " + label + "   ";
-				if (ImGui::Button(fullLabel.c_str()))
-				{
-					this->SlugSubs[slug] = true;
+					string fullLabel = "   " + label + "   ";
+					if (ImGui::Button(fullLabel.c_str()))
+					{
+						this->SlugSubs[slug] = true;
+					}
 				}
 			}
 		}
@@ -382,17 +359,17 @@ void RocketLounge::RenderSettings()
 
     	ImGui::NextColumn();
 		
-		if (Cvar::Get("enable_mpfp")->toBool())
+		string label = usingSlugs ? "names" : "slugs";
+		string fullLabel = "   Show player " + label + "   ";
+		if (ImGui::Button(fullLabel.c_str()))
 		{
-			string label = usingSlugs ? "names" : "slugs";
-			string fullLabel = "   Show player " + label + "   ";
-			if (ImGui::Button(fullLabel.c_str()))
-			{
-				Cvar::Get("ui_use_slugs")->setBool(!usingSlugs);
-			}
+			Cvar::Get("ui_use_slugs")->setBool(!usingSlugs);
+		}
 
-			ImGui::Spacing();
-			ImGui::Text("Players in Session");
+		ImGui::Spacing();
+		ImGui::Text("Players in Session");
+		if (this->SlugSubs.size())
+		{
 			for (const auto &[slug, subbed] : this->SlugSubs)
 			{
 				string label = usingSlugs ? slug : this->SlugDisplayNames[slug];

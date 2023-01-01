@@ -29,6 +29,9 @@ class Clone
                 auto pris = server.GetPRIs();
                 this->PriIdx = pris.Count() - 1;
                 auto botPri = pris.Get(this->PriIdx); if (botPri.IsNull()) return;
+                auto botUID = UniqueIDWrapper::FromEpicAccountID(this->Slug, this->PriIdx, OnlinePlatform_Epic);
+                botPri.SetUniqueId2(botUID);
+                Log::Info("Spawning bot " + botPri.GetUniqueIdWrapper().GetEpicAccountID());
                 auto botCar = botPri.GetCar(); if (botCar.IsNull()) return;
                 botCar.GetAIController().DoNothing();
                 if (!Cvar::Get("enable_collisions")->toBool())
@@ -131,32 +134,48 @@ class CloneManager
 
     static void DestroyClones()
     {
-        Global::GameWrapper->Execute([](...){
-            for (const auto &[slug, clone] : CloneManager::CloneMap)
-            {
-                CloneManager::DestroyClone(slug);
-            }
-		});
+        if (!CloneManager::CloneMap.size()) return;
+        for (auto &[slug, clone] : CloneManager::CloneMap)
+        {
+            CloneManager::DestroyClone(slug);
+        }
+        CloneManager::CloneMap.clear();
     }
 
     static void DestroyClone(string slug)
     {
         if (!CloneManager::CloneMap.count(slug)) return;
-        Global::GameWrapper->Execute([slug](...){
-            auto clone = CloneManager::CloneMap[slug];
-            Log::Info("Removing car and ball for " + clone->DisplayName + " (" + slug + ")");
+        auto clone = CloneManager::CloneMap[slug];
+        int priIdx = clone->PriIdx;
+        int ballIdx = clone->BallIdx;
+        Log::Info("Removing " + slug);
+        CloneManager::CloneMap.erase(slug);
+        Log::Info("Lookup key removed for " + slug);
+        Global::GameWrapper->Execute([priIdx, ballIdx](...){
             auto server = Global::GameWrapper->GetGameEventAsServer();
             if (!server.IsNull())
             {
-                auto balls = server.GetGameBalls();
                 auto players = server.GetPlayers();
-                auto botPlayer = players.Get(clone->PriIdx);
-                server.RemovePlayer(botPlayer);
-                balls.Get(clone->BallIdx).DoDestroy();
-                Log::Info("Car and ball models destroyed for " + clone->DisplayName + " (" + slug + ")");
+                if (players.Count() > priIdx)
+                {
+                    auto botPlayer = players.Get(priIdx);
+                    if (!botPlayer.IsNull())
+                    {
+                        server.RemovePlayer(botPlayer);
+                        Log::Info("Player/car destroyed");
+                    }
+                }
+                auto balls = server.GetGameBalls();
+                if (balls.Count() > ballIdx)
+                {
+                    auto botBall = balls.Get(ballIdx);
+                    if (!botBall.IsNull())
+                    {
+                        botBall.DoDestroy();
+                        Log::Info("Ball destroyed");
+                    }
+                }
             }
-            CloneManager::CloneMap.erase(slug);
-            Log::Info("Lookup key removed for " + clone->DisplayName + " (" + slug + ")");
 		});
     }
 };

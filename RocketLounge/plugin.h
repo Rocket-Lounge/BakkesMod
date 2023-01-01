@@ -54,4 +54,7 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 
 	// Game event hooks
 	void onTick(ServerWrapper caller, void* params, string eventName);
+
+	
+	void MeasureTickRate();
 };
