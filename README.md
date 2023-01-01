@@ -24,13 +24,20 @@ You will notice a lot of `gameWrapper->Execute()` wrappings. This is due to the 
 
 ### To Do
 
-- PRI Idx moves when destroying (WIP assigning UID to PRI)
-- Data sanitization
-- Only emit ball data on hits? Might make touching the ball of others feel more organic. If we emit slug of who touched it, slug of ball owner, and location etc data it might feel cleaner
+P0:
+- Cloned PRI UIDs (WIP)
+- Player cloned into your session disconnecting while your GUI is open causes crash
+    - Data sanitization?
+    - Disconnect event?
+
+P1:
+- No boost trail, set boost amount?
+- Spectator mode/takeover POV of others
+- Only emit ball data on hits for smoother experience?
+
+P2:
 - Prevent car/ball collisions
 - Semi-transparency for car/ball
-- Spectator mode/takeover POV of others
-- Crashing from GUI and pausing? Maybe need to stop updating clone when paused
 
 ### Helpful Links
 
