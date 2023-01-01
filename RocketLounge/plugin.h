@@ -58,4 +58,5 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 
 	
 	void MeasureTickRate();
+	void ShowChatMessage(string sender, string message);
 };

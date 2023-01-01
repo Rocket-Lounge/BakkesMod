@@ -143,7 +143,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	{
 		switch((PlayerData)i)
 		{
-			case PlayerData::DisplayName: 		self.push(sio::string_message::create(this->MyDisplayName)); 					break;
+			case PlayerData::DisplayName: 		self.push(sio::string_message::create(this->MyDisplayName)); 			break;
 			case PlayerData::BallLocationX: 	self.push(sio::string_message::create(to_string(ballLocation.X))); 		break;
 			case PlayerData::BallLocationY: 	self.push(sio::string_message::create(to_string(ballLocation.Y))); 		break;
 			case PlayerData::BallLocationZ: 	self.push(sio::string_message::create(to_string(ballLocation.Z))); 		break;
@@ -222,6 +222,14 @@ void RocketLounge::SioConnect()
 	this->io.socket()->on("notification", [this](sio::event& ev) {
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
 	});
+	this->io.socket()->on("chat", [this](sio::event& ev) {
+		if (!this->DataFlowAllowed()) return;
+		auto pieces = ev.get_messages();
+		if (pieces.size() != 2) return;
+		string slug = pieces.at(0)->get_string();
+		if (!this->SlugSubs.count(slug) && slug != this->MySlug) return;
+		this->ShowChatMessage(this->SlugDisplayNames[slug], pieces.at(1)->get_string());
+	});
 	this->io.socket()->on("player", [this](sio::event& ev) {
 		if (!this->DataFlowAllowed()) return;
 		auto pieces = ev.get_messages();
@@ -269,6 +277,14 @@ void RocketLounge::SioEmit(string event) {  this->io.socket()->emit(event); }
 void RocketLounge::SioEmit(string event, string payload) { this->io.socket()->emit(event, payload); }
 void RocketLounge::SioEmit(string event, sio::message::list const& payload) { this->io.socket()->emit(event, payload); }
 
+void RocketLounge::ShowChatMessage(string sender, string message)
+{
+	if (!sender.length() || !message.length()) return;
+	gameWrapper->Execute([this, sender, message](...){
+		gameWrapper->LogToChatbox(message, sender);
+	});
+}
+
 void RocketLounge::RenderSettings()
 {
 
@@ -309,11 +325,10 @@ void RocketLounge::RenderSettings()
 		if (ImGui::Button(" \t\t\t\t\t\t\t\t\t\t\t\t Send Chat \t\t\t\t\t\t\t\t\t\t\t\t "))
 		{
 			string chatInput = Cvar::Get("chat_input")->toString();
-			if (!chatInput.length()) return;
 			Cvar::Get("chat_input")->setString("");
-			gameWrapper->Execute([this, chatInput](...){
-				gameWrapper->LogToChatbox(chatInput, this->MyDisplayName);
-			});
+			sio::message::list chat(this->MySlug);
+			chat.push(sio::string_message::create(chatInput));
+			this->SioEmit("chat", chat);
 		}
 	}
 	

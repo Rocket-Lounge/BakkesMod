@@ -1,7 +1,7 @@
 #pragma once
 #define V_MAJOR 1
-#define V_MINOR 2
-#define V_PATCH 0
+#define V_MINOR 3
+#define V_PATCH 1
 #define V_BUILD 0
 
 #define stringify(a) stringify_(a)
