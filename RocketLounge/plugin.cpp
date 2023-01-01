@@ -57,6 +57,7 @@ void RocketLounge::onLoad()
 	new Cvar("ui_use_slugs", false);
 	new Cvar("enable_collisions", false);
 	new Cvar("player_list_filter", FilterPlaceholder);
+	new Cvar("chat_input", "");
 
 	// Auto connect API if we can...
 	int HALF_SECOND = 500; // I really hate magic numbers
@@ -118,9 +119,9 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	auto player = gameWrapper->GetPlayerController(); if (player.IsNull()) return this->DestroyStuff();
 	auto pri = player.GetPRI(); if (pri.IsNull()) return this->DestroyStuff();
 
-	string displayName = pri.GetPlayerName().ToString();
+	this->MyDisplayName = pri.GetPlayerName().ToString();
 	string platform = pri.GetUniqueIdWrapper().GetPlatform() == OnlinePlatform_Steam ? "steam" : "epic";
-	string platformUserId = platform == "steam" ? to_string(pri.GetUniqueId().ID) : displayName;
+	string platformUserId = platform == "steam" ? to_string(pri.GetUniqueId().ID) : this->MyDisplayName;
 	this->MySlug = platform + "/" + platformUserId;
 
 	auto car = pri.GetCar(); if (car.IsNull()) return this->DestroyStuff();
@@ -142,7 +143,7 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	{
 		switch((PlayerData)i)
 		{
-			case PlayerData::DisplayName: 		self.push(sio::string_message::create(displayName)); 					break;
+			case PlayerData::DisplayName: 		self.push(sio::string_message::create(this->MyDisplayName)); 					break;
 			case PlayerData::BallLocationX: 	self.push(sio::string_message::create(to_string(ballLocation.X))); 		break;
 			case PlayerData::BallLocationY: 	self.push(sio::string_message::create(to_string(ballLocation.Y))); 		break;
 			case PlayerData::BallLocationZ: 	self.push(sio::string_message::create(to_string(ballLocation.Z))); 		break;
@@ -272,48 +273,49 @@ void RocketLounge::RenderSettings()
 {
 
 	ImGui::NewLine();
-	ImGui::SameLine();
-	Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
 	ImGui::Columns(2, "split", false);
+
+	int red = !this->SioConnected ? 255 : 0;
+	ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(red,255,0,255));
+	ImGui::Text(this->SioConnected ? "  API Connected  " : "  API Disonnected");
+	ImGui::PopStyleColor();
+	ImGui::SameLine();
+	string tickRateLabel = "   Tick Rate: " + to_string(this->MyTickRate);
+	ImGui::Text(tickRateLabel.c_str());
+	ImGui::SameLine();
+	ImGui::Text("\t\t\t\t\t\t\t");
+	ImGui::SameLine();
+	if (ImGui::Button(this->SioConnected ? "   Disconnect   " : "     Connect     "))
+	{
+		if (this->SioConnected) this->SioDisconnect();
+		else this->SioConnect();
+	}
 	
 	if (this->SioConnected)
 	{
-		ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0,255,0,255));
-		ImGui::Text("  API Connected  ");
-		ImGui::PopStyleColor();
-		ImGui::SameLine();
-		ImGui::Text("\t\t\t\t\t\t\t");
-		ImGui::SameLine();
-		ImGui::Text("\t\t\t\t\t\t\t");
-		ImGui::SameLine();
-		if (ImGui::Button("   Disconnect   "))
-		{
-			this->SioDisconnect();
-		}
-		ImGui::Spacing();
+		ImGui::NewLine();
 		string recordLabel = "   " + string(this->IsRecording ? "Save Recording" : "Start Recording") + "   ";
 		string trimLabel = "   " + string(this->IsTrimming ? "Save Trimming" : "Start Trimming") + "   ";
 		if (ImGui::Button(recordLabel.c_str())) this->ToggleRecording();
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
 		ImGui::SameLine();
-		string tickRateLabel = "   Tick Rate: " + to_string(this->MyTickRate);
-		ImGui::Text(tickRateLabel.c_str());
-		ImGui::Spacing();
-	}
-	else
-	{
-		Cvar::Get("api_host")->RenderLargeInput(" API Host ", 160);
-		ImGui::NewLine();
-		ImGui::Text("  ");
+		ImGui::Text("\t\t\t");
 		ImGui::SameLine();
-		if (ImGui::Button("    Connect    "))
-		{
-			this->SioConnect();
-		}
+		Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
 		ImGui::NewLine();
-	}
 
+		Cvar::Get("chat_input")->RenderMultilineInput(" Lounge Chat  \t\t\t\t\t  (visible to everyone with you in their session) ");
+		if (ImGui::Button(" \t\t\t\t\t\t\t\t\t\t\t\t Send Chat \t\t\t\t\t\t\t\t\t\t\t\t "))
+		{
+			string chatInput = Cvar::Get("chat_input")->toString();
+			if (!chatInput.length()) return;
+			Cvar::Get("chat_input")->setString("");
+			gameWrapper->Execute([this, chatInput](...){
+				gameWrapper->LogToChatbox(chatInput, this->MyDisplayName);
+			});
+		}
+	}
 	
     ImGui::NextColumn();
     ImGui::BeginChild("right");

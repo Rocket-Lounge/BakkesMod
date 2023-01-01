@@ -37,6 +37,7 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 
 	int MyTickRate = 60;
 	string MySlug = "";
+	string MyDisplayName = "";
 	map<string, bool> SlugSubs = {};
 	map<string, int> SlugLastSeen = {};
 	map<string, string> SlugDisplayNames = {};
