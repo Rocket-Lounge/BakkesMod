@@ -55,6 +55,7 @@ void RocketLounge::onLoad()
 
 	new Cvar("api_host", defaultApiHost);
 	new Cvar("ui_use_slugs", false);
+	new Cvar("enable_chase", false);
 	new Cvar("enable_collisions", false);
 	new Cvar("player_list_filter", FilterPlaceholder);
 	new Cvar("chat_input", "");
@@ -212,13 +213,19 @@ void RocketLounge::SioConnect()
 	this->io.connect(apiHost);
 	this->io.set_open_listener([this, apiHost]() {
 		this->SioConnected = true;
-        Global::Notify::Success("Lounge Connected", string("Successfully connected to " + apiHost));
+        Global::Notify::Success("Good to see you!", "Successfully connected to RocketLounge.gg");
 	});
 	this->io.set_close_listener([this, apiHost](sio::client::close_reason const& reason) {
 		this->SioConnected = false;
 		string msg = reason == sio::client::close_reason::close_reason_normal ? "closed" : "dropped";
-		string fullMsg = "Connection to " + apiHost + " was " + msg;
-        Global::Notify::Error("Lounge Disconnected", fullMsg);
+		if (reason == sio::client::close_reason::close_reason_normal)
+		{
+        	Global::Notify::Info("Until next time!", "Hope you enjoyed your stay at RocketLounge.gg");
+		}
+		else
+		{
+        	Global::Notify::Error("Uh oh!", "Your PC has dropped the connection to RocketLounge.gg");
+		}
 	});
 	this->io.socket()->on("notification", [this](sio::event& ev) {
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
@@ -316,10 +323,10 @@ void RocketLounge::RenderSettings()
 		if (ImGui::Button(recordLabel.c_str())) this->ToggleRecording();
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
-		ImGui::SameLine();
-		ImGui::Text("\t\t\t");
-		ImGui::SameLine();
-		Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
+		// ImGui::SameLine();
+		// Cvar::Get("enable_collisions")->RenderCheckbox(" Collisions ");
+		// ImGui::SameLine();
+		// Cvar::Get("enable_chase")->RenderCheckbox(" Chase Me! ");
 		ImGui::NewLine();
 
 		Cvar::Get("chat_input")->RenderMultilineInput(" Lounge Chat  \t\t\t\t\t  (visible to everyone with you in their session) ");

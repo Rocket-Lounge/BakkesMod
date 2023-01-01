@@ -26,6 +26,7 @@ You will notice a lot of `gameWrapper->Execute()` wrappings. This is due to the 
 
 P0:
 - Cloned PRI UIDs (WIP)
+- Crash if another player hits your ball into goal causing replay
 - Player cloned into your session disconnecting while your GUI is open causes crash
     - Data sanitization?
     - Disconnect event?
@@ -38,6 +39,8 @@ P1:
 P2:
 - Prevent car/ball collisions
 - Semi-transparency for car/ball
+
+Chat wont pop in custom training
 
 ### Helpful Links
 
