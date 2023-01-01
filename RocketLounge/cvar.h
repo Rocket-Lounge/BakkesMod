@@ -169,6 +169,15 @@ class Cvar {
         cvar.setValue(cvarVal);
     }
 
+    void RenderMultilineInput(string label="", int width=420, int height=32)
+    {
+        auto cvar = Global::CvarManager->getCvar(Cvar::prefix + this->name);
+        string cvarVal = cvar.getStringValue();
+        ImGui::Text(label.c_str());
+        ImGui::InputTextMultiline(string("##" + this->name).c_str(), &cvarVal, { float(width), float(height) });
+        cvar.setValue(cvarVal);
+    }
+
     void RenderSliderInput(string label="", int width=256, bool labelNewLine = false)
     {
         if (this->type != DataType::Int && this->type != DataType::Float)
