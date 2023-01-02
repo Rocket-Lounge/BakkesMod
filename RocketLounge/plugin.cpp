@@ -9,10 +9,10 @@
 #include <imgui_stdlib.h> // ImGui::InputText
 using namespace std;
 
-string defaultSioHost = "http://localhost:8080";
-// string defaultSioHost = "http://rocketlounge.gg";
-string defaultENetHost = "127.0.0.1";
-// string enetHost = "76.193.125.245";
+// string defaultSioHost = "http://localhost:8080";
+string defaultSioHost = "http://rocketlounge.gg";
+// string defaultENetHost = "127.0.0.1";
+string defaultENetHost = "76.193.125.245";
 string FilterPlaceholder = "Filter...";
 
 const char * PluginName = "A1 Rocket Lounge"; // To change DLL filename use <TargetName> in *.vcxproj
@@ -272,6 +272,7 @@ void RocketLounge::ENetRelay(int timeout)
 			case ENET_EVENT_TYPE_RECEIVE:
 				char buffer[420];
 				sprintf(buffer, "%s", event.packet -> data);
+				this->ENetReceive(string(buffer));
 				enet_packet_destroy (event.packet);
 				break;
 			case ENET_EVENT_TYPE_DISCONNECT:
