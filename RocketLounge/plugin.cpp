@@ -192,6 +192,15 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	}
 
 	this->EmitPlayerEvent(payload);
+	if (Cvar::Get("enable_chase")->toBool())
+	{
+		string chaseBotName = "Gonna Gitcha";
+		string chaseBotSlug = "chase/" + this->MySlug;
+		this->SlugSubs[chaseBotSlug] = true;
+		payload.at((int)PlayerData::Slug) = chaseBotSlug;
+		payload.at((int)PlayerData::DisplayName) = chaseBotName;
+		setTimeout([this, payload](){ this->IncomingPlayerEvent(payload); }, 500);
+	}
 }
 
 int measuredTicks = 0;
@@ -462,9 +471,9 @@ void RocketLounge::RenderSettings()
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
 		// ImGui::SameLine();
-		// Cvar::Get("enable_collisions")->RenderCheckbox(" Collisions ");
+		Cvar::Get("enable_collisions")->RenderCheckbox(" Collisions ");
 		// ImGui::SameLine();
-		// Cvar::Get("enable_chase")->RenderCheckbox(" Chase Me! ");
+		Cvar::Get("enable_chase")->RenderCheckbox(" Chase Me! ");
 		ImGui::NewLine();
 
 		Cvar::Get("chat_input")->RenderMultilineInput(" Lounge Chat  \t\t\t\t\t  (visible to everyone with you in their session) ");
