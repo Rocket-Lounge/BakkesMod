@@ -9,8 +9,8 @@
 #include <imgui_stdlib.h> // ImGui::InputText
 using namespace std;
 
-string defaultApiHost = "http://rocketlounge.gg";
-// string defaultApiHost = "http://localhost:8080";
+// string defaultSioHost = "http://localhost:8080";
+string defaultSioHost = "http://rocketlounge.gg";
 string FilterPlaceholder = "Filter...";
 
 const char * PluginName = "A1 Rocket Lounge"; // To change DLL filename use <TargetName> in *.vcxproj
@@ -20,8 +20,8 @@ BAKKESMOD_PLUGIN(RocketLounge, PluginName, PluginVersion, PLUGINTYPE_FREEPLAY);
 // Changing order will break previous versions of plugin
 enum class PlayerData
 {
-	Slug, // this is contractual
-	// Version, // string(PluginVersion)
+	Slug,
+	// Version,
 	DisplayName,
 	CarBody,
 	CarLocationX,
@@ -42,7 +42,7 @@ enum class PlayerData
 	BallRotationYaw,
 	BallRotationRoll,
 	BallRotationPitch,
-	END_PLAYER_DATA // this must remain at end of enum
+	END // this must remain at end of enum
 };
 
 void RocketLounge::onLoad()
@@ -53,8 +53,9 @@ void RocketLounge::onLoad()
 	Log::SetPrintLevel(Log::Level::Info);
 	Log::SetWriteLevel(Log::Level::Info);
 
-	new Cvar("api_host", defaultApiHost);
+	new Cvar("api_host", defaultSioHost);
 	new Cvar("ui_use_slugs", false);
+	new Cvar("enable_chase", false);
 	new Cvar("enable_collisions", false);
 	new Cvar("player_list_filter", FilterPlaceholder);
 	new Cvar("chat_input", "");
@@ -138,35 +139,46 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	
 	CloneManager::ReflectClones();
 
-	sio::message::list self(this->MySlug);
-	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
+	vector<string> payload = {};
+	for(int i = 0; i < (int)PlayerData::END; i++)
 	{
 		switch((PlayerData)i)
 		{
-			case PlayerData::DisplayName: 		self.push(sio::string_message::create(this->MyDisplayName)); 			break;
-			case PlayerData::BallLocationX: 	self.push(sio::string_message::create(to_string(ballLocation.X))); 		break;
-			case PlayerData::BallLocationY: 	self.push(sio::string_message::create(to_string(ballLocation.Y))); 		break;
-			case PlayerData::BallLocationZ: 	self.push(sio::string_message::create(to_string(ballLocation.Z))); 		break;
-			case PlayerData::BallVelocityX: 	self.push(sio::string_message::create(to_string(ballVelocity.X))); 		break;
-			case PlayerData::BallVelocityY: 	self.push(sio::string_message::create(to_string(ballVelocity.Y))); 		break;
-			case PlayerData::BallVelocityZ: 	self.push(sio::string_message::create(to_string(ballVelocity.Z))); 		break;
-			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); 	break;
-			case PlayerData::BallRotationYaw: 	self.push(sio::string_message::create(to_string(ballRotation.Yaw))); 	break;
-			case PlayerData::BallRotationRoll: 	self.push(sio::string_message::create(to_string(ballRotation.Roll))); 	break;
-			case PlayerData::CarBody: 			self.push(sio::string_message::create(to_string(carBody))); 			break;
-			case PlayerData::CarLocationX: 		self.push(sio::string_message::create(to_string(carLocation.X))); 		break;
-			case PlayerData::CarLocationY: 		self.push(sio::string_message::create(to_string(carLocation.Y))); 		break;
-			case PlayerData::CarLocationZ: 		self.push(sio::string_message::create(to_string(carLocation.Z))); 		break;
-			case PlayerData::CarVelocityX: 		self.push(sio::string_message::create(to_string(carVelocity.X))); 		break;
-			case PlayerData::CarVelocityY: 		self.push(sio::string_message::create(to_string(carVelocity.Y))); 		break;
-			case PlayerData::CarVelocityZ: 		self.push(sio::string_message::create(to_string(carVelocity.Z))); 		break;
-			case PlayerData::CarRotationPitch: 	self.push(sio::string_message::create(to_string(carRotation.Pitch))); 	break;
-			case PlayerData::CarRotationYaw: 	self.push(sio::string_message::create(to_string(carRotation.Yaw))); 	break;
-			case PlayerData::CarRotationRoll: 	self.push(sio::string_message::create(to_string(carRotation.Roll))); 	break;
+			case PlayerData::Slug: 				payload.push_back(this->MySlug); 					break;
+			// case PlayerData::Version: 			payload.push_back(string(PluginVersion)); 			break;
+			case PlayerData::DisplayName: 		payload.push_back(this->MyDisplayName); 			break;
+			case PlayerData::BallLocationX: 	payload.push_back(to_string(ballLocation.X)); 		break;
+			case PlayerData::BallLocationY: 	payload.push_back(to_string(ballLocation.Y)); 		break;
+			case PlayerData::BallLocationZ: 	payload.push_back(to_string(ballLocation.Z)); 		break;
+			case PlayerData::BallVelocityX: 	payload.push_back(to_string(ballVelocity.X)); 		break;
+			case PlayerData::BallVelocityY: 	payload.push_back(to_string(ballVelocity.Y)); 		break;
+			case PlayerData::BallVelocityZ: 	payload.push_back(to_string(ballVelocity.Z)); 		break;
+			case PlayerData::BallRotationPitch: payload.push_back(to_string(ballRotation.Pitch)); 	break;
+			case PlayerData::BallRotationYaw: 	payload.push_back(to_string(ballRotation.Yaw)); 	break;
+			case PlayerData::BallRotationRoll: 	payload.push_back(to_string(ballRotation.Roll)); 	break;
+			case PlayerData::CarBody: 			payload.push_back(to_string(carBody)); 				break;
+			case PlayerData::CarLocationX: 		payload.push_back(to_string(carLocation.X)); 		break;
+			case PlayerData::CarLocationY: 		payload.push_back(to_string(carLocation.Y)); 		break;
+			case PlayerData::CarLocationZ: 		payload.push_back(to_string(carLocation.Z)); 		break;
+			case PlayerData::CarVelocityX: 		payload.push_back(to_string(carVelocity.X)); 		break;
+			case PlayerData::CarVelocityY: 		payload.push_back(to_string(carVelocity.Y)); 		break;
+			case PlayerData::CarVelocityZ: 		payload.push_back(to_string(carVelocity.Z)); 		break;
+			case PlayerData::CarRotationPitch: 	payload.push_back(to_string(carRotation.Pitch)); 	break;
+			case PlayerData::CarRotationYaw: 	payload.push_back(to_string(carRotation.Yaw)); 		break;
+			case PlayerData::CarRotationRoll: 	payload.push_back(to_string(carRotation.Roll)); 	break;
 		}
 	}
-	
-	this->SioEmit("self", self);
+
+	this->EmitPlayerEvent(payload);
+	if (Cvar::Get("enable_chase")->toBool())
+	{
+		string chaseBotName = "Gonna Gitcha";
+		string chaseBotSlug = "chase/" + this->MySlug;
+		this->SlugSubs[chaseBotSlug] = true;
+		payload.at((int)PlayerData::Slug) = chaseBotSlug;
+		payload.at((int)PlayerData::DisplayName) = chaseBotName;
+		setTimeout([this, payload](){ this->IncomingPlayerEvent(payload); }, 500);
+	}
 }
 
 int measuredTicks = 0;
@@ -192,6 +204,55 @@ void RocketLounge::MeasureTickRate()
 	}
 }
 
+void RocketLounge::EmitPlayerEvent(vector<string> v)
+{
+	sio::message::list payload(v.at(0));
+	for(int i = 1; i < v.size(); i++) payload.push(sio::string_message::create(v.at(i)));
+	this->SioEmit("self", payload);
+}
+
+void RocketLounge::IncomingPlayerEvent(vector<string> pieces)
+{
+	if (!this->DataFlowAllowed()) return;
+	if (pieces.size() != (int)PlayerData::END) return;
+	string slug = pieces.at((int)PlayerData::Slug);
+	string displayName = pieces.at((int)PlayerData::DisplayName);
+	int carBody = stoi(pieces.at((int)PlayerData::CarBody));
+	if (!this->SlugLastSeen.count(slug) && slug != this->MySlug)
+	{
+		Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
+	}
+	this->SlugLastSeen[slug] = timestamp();
+	this->SlugDisplayNames[slug] = displayName;
+	if (!this->SlugSubs.count(slug)) return;
+	CloneManager::UseClone(slug, displayName, carBody)->SetBall({
+		stof(pieces.at((int)PlayerData::BallLocationX)),
+		stof(pieces.at((int)PlayerData::BallLocationY)),
+		stof(pieces.at((int)PlayerData::BallLocationZ)),
+	}, {
+		stof(pieces.at((int)PlayerData::BallVelocityX)),
+		stof(pieces.at((int)PlayerData::BallVelocityY)),
+		stof(pieces.at((int)PlayerData::BallVelocityZ)),
+	}, {
+		stoi(pieces.at((int)PlayerData::BallRotationPitch)),
+		stoi(pieces.at((int)PlayerData::BallRotationYaw)),
+		stoi(pieces.at((int)PlayerData::BallRotationRoll)),
+	});
+	CloneManager::UseClone(slug, displayName, carBody)->SetCar({
+		stof(pieces.at((int)PlayerData::CarLocationX)),
+		stof(pieces.at((int)PlayerData::CarLocationY)),
+		stof(pieces.at((int)PlayerData::CarLocationZ)),
+	}, {
+		stof(pieces.at((int)PlayerData::CarVelocityX)),
+		stof(pieces.at((int)PlayerData::CarVelocityY)),
+		stof(pieces.at((int)PlayerData::CarVelocityZ)),
+	}, {
+		stoi(pieces.at((int)PlayerData::CarRotationPitch)),
+		stoi(pieces.at((int)PlayerData::CarRotationYaw)),
+		stoi(pieces.at((int)PlayerData::CarRotationRoll)),
+	});
+}
+
 void RocketLounge::SioDisconnect()
 {
 	this->SioConnected = false;
@@ -212,13 +273,19 @@ void RocketLounge::SioConnect()
 	this->io.connect(apiHost);
 	this->io.set_open_listener([this, apiHost]() {
 		this->SioConnected = true;
-        Global::Notify::Success("Lounge Connected", string("Successfully connected to " + apiHost));
+        Global::Notify::Success("Good to see you!", "Successfully connected to RocketLounge.gg");
 	});
 	this->io.set_close_listener([this, apiHost](sio::client::close_reason const& reason) {
 		this->SioConnected = false;
 		string msg = reason == sio::client::close_reason::close_reason_normal ? "closed" : "dropped";
-		string fullMsg = "Connection to " + apiHost + " was " + msg;
-        Global::Notify::Error("Lounge Disconnected", fullMsg);
+		if (reason == sio::client::close_reason::close_reason_normal)
+		{
+        	Global::Notify::Info("Until next time!", "Hope you enjoyed your stay at RocketLounge.gg");
+		}
+		else
+		{
+        	Global::Notify::Error("Uh oh!", "Your PC has dropped the connection to RocketLounge.gg");
+		}
 	});
 	this->io.socket()->on("notification", [this](sio::event& ev) {
 		Global::Notify::Info("API Notification", ev.get_message()->get_string());
@@ -232,45 +299,10 @@ void RocketLounge::SioConnect()
 		this->ShowChatMessage(this->SlugDisplayNames[slug], pieces.at(1)->get_string());
 	});
 	this->io.socket()->on("player", [this](sio::event& ev) {
-		if (!this->DataFlowAllowed()) return;
-		auto pieces = ev.get_messages();
-		if (pieces.size() != (int)PlayerData::END_PLAYER_DATA) return;
-		string slug = pieces.at((int)PlayerData::Slug)->get_string();
-		string displayName = pieces.at((int)PlayerData::DisplayName)->get_string();
-		string carBodyStr = pieces.at((int)PlayerData::CarBody)->get_string();
-		if (!this->SlugLastSeen.count(slug) && slug != this->MySlug)
-		{
-			Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
-		}
-		this->SlugLastSeen[slug] = timestamp();
-		this->SlugDisplayNames[slug] = displayName;
-		if (!this->SlugSubs.count(slug)) return;
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetBall({
-			stof(pieces.at((int)PlayerData::BallLocationX)->get_string()),
-			stof(pieces.at((int)PlayerData::BallLocationY)->get_string()),
-			stof(pieces.at((int)PlayerData::BallLocationZ)->get_string()),
-		}, {
-			stof(pieces.at((int)PlayerData::BallVelocityX)->get_string()),
-			stof(pieces.at((int)PlayerData::BallVelocityY)->get_string()),
-			stof(pieces.at((int)PlayerData::BallVelocityZ)->get_string()),
-		}, {
-			stoi(pieces.at((int)PlayerData::BallRotationPitch)->get_string()),
-			stoi(pieces.at((int)PlayerData::BallRotationYaw)->get_string()),
-			stoi(pieces.at((int)PlayerData::BallRotationRoll)->get_string()),
-		});
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetCar({
-			stof(pieces.at((int)PlayerData::CarLocationX)->get_string()),
-			stof(pieces.at((int)PlayerData::CarLocationY)->get_string()),
-			stof(pieces.at((int)PlayerData::CarLocationZ)->get_string()),
-		}, {
-			stof(pieces.at((int)PlayerData::CarVelocityX)->get_string()),
-			stof(pieces.at((int)PlayerData::CarVelocityY)->get_string()),
-			stof(pieces.at((int)PlayerData::CarVelocityZ)->get_string()),
-		}, {
-			stoi(pieces.at((int)PlayerData::CarRotationPitch)->get_string()),
-			stoi(pieces.at((int)PlayerData::CarRotationYaw)->get_string()),
-			stoi(pieces.at((int)PlayerData::CarRotationRoll)->get_string()),
-		});
+		auto payload = ev.get_messages();
+		vector<string> v = {};
+		for(int i = 0; i < payload.size(); i++) v.push_back(payload.at(i)->get_string());
+		this->IncomingPlayerEvent(v);
 	});
 }
 // Emit in separate thread to reduce performance impact
@@ -300,7 +332,8 @@ void RocketLounge::RenderSettings()
 	string tickRateLabel = "   Tick Rate: " + to_string(this->MyTickRate);
 	ImGui::Text(tickRateLabel.c_str());
 	ImGui::SameLine();
-	ImGui::Text("\t\t\t\t\t\t\t");
+	// ImGui::Text("\t\t\t\t\t\t\t");
+	ImGui::Text("\t\t\t");
 	ImGui::SameLine();
 	if (ImGui::Button(this->SioConnected ? "   Disconnect   " : "     Connect     "))
 	{
@@ -317,9 +350,9 @@ void RocketLounge::RenderSettings()
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
 		ImGui::SameLine();
-		ImGui::Text("\t\t\t");
+		Cvar::Get("enable_collisions")->RenderCheckbox(" Collisions ");
 		ImGui::SameLine();
-		Cvar::Get("enable_collisions")->RenderCheckbox(" Enable Collisions ");
+		Cvar::Get("enable_chase")->RenderCheckbox(" Chase Me! ");
 		ImGui::NewLine();
 
 		Cvar::Get("chat_input")->RenderMultilineInput(" Lounge Chat  \t\t\t\t\t  (visible to everyone with you in their session) ");

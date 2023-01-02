@@ -30,6 +30,11 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	virtual void onLoad();
 	virtual void onUnload();
 
+	// Game event hooks
+	void onTick(ServerWrapper caller, void* params, string eventName);
+	void MeasureTickRate();
+	void ShowChatMessage(string sender, string message);
+
 	bool IsRecording = false;
 	void ToggleRecording();
 	bool IsTrimming = false;
@@ -44,7 +49,7 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	bool DataFlowAllowed();
 	void DestroyStuff();
 
-	// API functionality
+	// Socket.io specific implementation
 	sio::client io;
     bool SioConnected = false;
     void SioConnect();
@@ -53,10 +58,8 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void SioEmit(string event, string payload);
 	void SioEmit(string event, sio::message::list const& payload);
 
-	// Game event hooks
-	void onTick(ServerWrapper caller, void* params, string eventName);
+	// Generic wrappers that can remain protocol agnostic
+	void EmitPlayerEvent(vector<string> payload);
+	void IncomingPlayerEvent(vector<string> payload);
 
-	
-	void MeasureTickRate();
-	void ShowChatMessage(string sender, string message);
 };
