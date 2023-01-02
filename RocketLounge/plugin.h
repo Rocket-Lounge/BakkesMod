@@ -1,9 +1,12 @@
 #pragma once
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "winmm.lib")
 #pragma warning(disable:4996)
 // Above line prevents compilation error:
 // 'PlayerReplicationInfoWrapper::GetUniqueId': Use GetUniqueIdWrapper instead
 
 #include <string>
+#include <enet/enet.h>
 #include <sio_client.h>
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
@@ -45,6 +48,14 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void DestroyStuff();
 
 	// API functionality
+	ENetHost * enetClient;
+	ENetPeer * enetHost;
+	bool ENetConnected = false;
+	void ENetConnect();
+	void ENetDisconnect();
+	void ENetRelay(int timeout);
+	void ENetSend();
+
 	sio::client io;
     bool SioConnected = false;
     void SioConnect();

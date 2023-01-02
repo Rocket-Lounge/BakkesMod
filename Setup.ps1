@@ -2,6 +2,7 @@ Set-Location RocketLounge
 git clone https://github.com/Microsoft/vcpkg.git
 .\vcpkg\bootstrap-vcpkg.bat
 .\vcpkg\vcpkg install fmt:x64-windows-static
+.\vcpkg\vcpkg install enet:x64-windows-static
 .\vcpkg\vcpkg install imgui[core,dx12-binding,win32-binding]:x64-windows-static
 .\vcpkg\vcpkg install socket-io-client:x64-windows-static
 .\vcpkg\vcpkg integrate install

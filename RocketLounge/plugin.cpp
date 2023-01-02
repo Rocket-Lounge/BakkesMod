@@ -47,6 +47,21 @@ enum class PlayerData
 
 void RocketLounge::onLoad()
 {
+	if (enet_initialize() != 0)
+    {
+        Log::Error("ENet initialization failure");
+    }
+
+	this->enetClient = enet_host_create (NULL /* create a client host */,
+				1 /* only allow 1 outgoing connection */,
+				2 /* allow up 2 channels to be used, 0 and 1 */,
+				0 /* assume any amount of incoming bandwidth */,
+				0 /* assume any amount of outgoing bandwidth */);
+	if (this->enetClient == NULL)
+	{
+        Log::Error("An error occurred while trying to create an ENet client host");
+	}
+
 	Global::GameWrapper = gameWrapper;
 	Global::CvarManager = cvarManager;
 
@@ -62,7 +77,7 @@ void RocketLounge::onLoad()
 
 	// Auto connect API if we can...
 	int HALF_SECOND = 500; // I really hate magic numbers
-	setTimeout([=](){ this->SioConnect(); }, HALF_SECOND);
+	// setTimeout([=](){ this->SioConnect(); this->ENetConnect(); }, HALF_SECOND);
 	
 	map<string, void (RocketLounge::*)(ServerWrapper c, void *p, string e)> ListenerMap =
 	{
@@ -78,7 +93,98 @@ void RocketLounge::onLoad()
 
 void RocketLounge::onUnload()
 {
+	this->ENetDisconnect();
 	this->SioDisconnect();
+}
+
+void RocketLounge::ENetConnect()
+{
+	ENetAddress address;
+	ENetEvent event;
+	/* Connect to some.server.net:1234. */
+	enet_address_set_host (&address, "127.0.0.1");
+	address.port = 7777;
+	/* Initiate the connection, allocating the two channels 0 and 1. */
+	this->enetHost = enet_host_connect(this->enetClient, & address, 2, 0);    
+	if (this->enetHost == NULL)
+	{
+		Log::Error("No available peers for initiating an ENet connection");
+		return;
+	}
+	/* Wait up to 5 seconds for the connection attempt to succeed. */
+	if (enet_host_service (this->enetClient, & event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
+	{
+		Log::Info("Connection to enet succeeded.");
+		this->ENetConnected = true;
+	}
+	else
+	{
+		/* Either the 5 seconds are up or a disconnect event was */
+		/* received. Reset the peer in the event the 5 seconds   */
+		/* had run out without any significant event.            */
+		enet_peer_reset(this->enetHost);
+		Log::Error("Connection to enet failed.");
+	}
+}
+
+void RocketLounge::ENetDisconnect()
+{
+	enet_host_destroy(this->enetClient);
+	enet_deinitialize();
+	this->ENetConnected = false;
+}
+
+void RocketLounge::ENetRelay(int timeout = 0)
+{
+	if (!this->ENetConnected) return;
+	ENetEvent event;
+	/* Wait up to 1000 milliseconds for an event. */
+	while (enet_host_service (this->enetClient, & event, timeout) > 0)
+	{
+		switch (event.type)
+		{
+		case ENET_EVENT_TYPE_CONNECT:
+			Log::Info("Client connected");
+			// Log::Info("IP: " + to_string(event.peer->address.host));
+			// Log::Info("PORT: " + to_string(event.peer->address.port));
+			/* Store any relevant client information here. */
+			// event.peer -> data = "Client information";
+			break;
+		case ENET_EVENT_TYPE_RECEIVE:
+			Log::Info("Packet received");
+			// Log::Info(event.packet -> data);
+			// Log::Info(string(to_string(event.packet->dataLength)));
+			// Log::Info(string(event.packet -> data));
+			// Log::Info(string(event.peer -> data));
+			// Log::Info(string(to_string(event.channelID)));
+			/* Clean up the packet now that we're done using it. */
+			enet_packet_destroy (event.packet);
+			
+			break;
+		
+		case ENET_EVENT_TYPE_DISCONNECT:
+			Log::Info("Disconnected");
+			// Log::Info(event.peer -> data);
+			/* Reset the peer's client information. */
+			event.peer -> data = NULL;
+		}
+	}
+}
+
+void RocketLounge::ENetSend()
+{
+	/* Create a reliable packet of size 7 containing "packet\0" */
+	ENetPacket * packet = enet_packet_create ("packet", 
+											strlen ("packet") + 1, 
+											ENET_PACKET_FLAG_RELIABLE);
+	/* Extend the packet so and append the string "foo", so it now */
+	/* contains "packetfoo\0"                                      */
+	// enet_packet_resize (packet, strlen ("packetfoo") + 1);
+	// strcpy (& packet -> data [strlen ("packet")], "foo");
+	/* Send the packet to the peer over channel id 0. */
+	/* One could also broadcast the packet by         */
+	/* enet_host_broadcast (host, 0, packet);         */
+	enet_peer_send (this->enetHost, 0, packet);
 }
 
 void RocketLounge::ToggleRecording()
@@ -113,6 +219,7 @@ void RocketLounge::DestroyStuff()
 
 void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 {
+	this->ENetRelay();
 	if (!this->DataFlowAllowed()) return this->DestroyStuff();
 	this->MeasureTickRate();
 
@@ -296,6 +403,10 @@ void RocketLounge::ShowChatMessage(string sender, string message)
 void RocketLounge::RenderSettings()
 {
 
+	ImGui::NewLine();
+	if (ImGui::Button(this->ENetConnected ? "ENet Disconnect" : "ENet Connect"))
+		this->ENetConnected ? this->ENetDisconnect() : this->ENetConnect();
+	if (ImGui::Button("ENet Send")) this->ENetSend();
 	ImGui::NewLine();
 	ImGui::Columns(2, "split", false);
 
