@@ -33,6 +33,11 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	virtual void onLoad();
 	virtual void onUnload();
 
+	// Game event hooks
+	void onTick(ServerWrapper caller, void* params, string eventName);
+	void MeasureTickRate();
+	void ShowChatMessage(string sender, string message);
+
 	bool IsRecording = false;
 	void ToggleRecording();
 	bool IsTrimming = false;
@@ -47,15 +52,18 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	bool DataFlowAllowed();
 	void DestroyStuff();
 
-	// API functionality
+	// ENet specific implementation
+	string enetDelim = "|";
 	ENetHost * enetClient;
 	ENetPeer * enetHost;
 	bool ENetConnected = false;
 	void ENetConnect();
 	void ENetDisconnect();
-	void ENetRelay(int timeout);
-	void ENetSend();
+	void ENetRelay(int timeout = 0);
+	void ENetEmit(vector<string> payload);
+	void ENetReceive(string rawPayload);
 
+	// Socket.io specific implementation
 	sio::client io;
     bool SioConnected = false;
     void SioConnect();
@@ -64,10 +72,8 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void SioEmit(string event, string payload);
 	void SioEmit(string event, sio::message::list const& payload);
 
-	// Game event hooks
-	void onTick(ServerWrapper caller, void* params, string eventName);
+	// Generic wrappers that can use both ENet and Socket.io
+	void EmitPlayerEvent(vector<string> payload);
+	void IncomingPlayerEvent(vector<string> payload);
 
-	
-	void MeasureTickRate();
-	void ShowChatMessage(string sender, string message);
 };

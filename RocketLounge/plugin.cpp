@@ -9,8 +9,10 @@
 #include <imgui_stdlib.h> // ImGui::InputText
 using namespace std;
 
-string defaultApiHost = "http://rocketlounge.gg";
-// string defaultApiHost = "http://localhost:8080";
+string defaultSioHost = "http://localhost:8080";
+// string defaultSioHost = "http://rocketlounge.gg";
+string defaultENetHost = "127.0.0.1";
+// string enetHost = "76.193.125.245";
 string FilterPlaceholder = "Filter...";
 
 const char * PluginName = "A1 Rocket Lounge"; // To change DLL filename use <TargetName> in *.vcxproj
@@ -20,8 +22,8 @@ BAKKESMOD_PLUGIN(RocketLounge, PluginName, PluginVersion, PLUGINTYPE_FREEPLAY);
 // Changing order will break previous versions of plugin
 enum class PlayerData
 {
-	Slug, // this is contractual
-	// Version, // string(PluginVersion)
+	Slug,
+	// Version,
 	DisplayName,
 	CarBody,
 	CarLocationX,
@@ -42,7 +44,7 @@ enum class PlayerData
 	BallRotationYaw,
 	BallRotationRoll,
 	BallRotationPitch,
-	END_PLAYER_DATA // this must remain at end of enum
+	END // this must remain at end of enum
 };
 
 void RocketLounge::onLoad()
@@ -68,7 +70,8 @@ void RocketLounge::onLoad()
 	Log::SetPrintLevel(Log::Level::Info);
 	Log::SetWriteLevel(Log::Level::Info);
 
-	new Cvar("api_host", defaultApiHost);
+	new Cvar("use_enet", false);
+	new Cvar("api_host", defaultSioHost);
 	new Cvar("ui_use_slugs", false);
 	new Cvar("enable_chase", false);
 	new Cvar("enable_collisions", false);
@@ -97,104 +100,7 @@ void RocketLounge::onUnload()
 	this->SioDisconnect();
 }
 
-void RocketLounge::ENetConnect()
-{
-	ENetAddress address;
-	ENetEvent event;
-	/* Connect to some.server.net:1234. */
-	// enet_address_set_host (&address, "76.193.125.245");
-	enet_address_set_host (&address, "127.0.0.1");
-	address.port = 7777;
-	/* Initiate the connection, allocating the two channels 0 and 1. */
-	this->enetHost = enet_host_connect(this->enetClient, & address, 2, 0);    
-	if (this->enetHost == NULL)
-	{
-		Log::Error("No available peers for initiating an ENet connection");
-		return;
-	}
-	/* Wait up to 5 seconds for the connection attempt to succeed. */
-	if (enet_host_service (this->enetClient, & event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
-	{
-		Log::Info("Connection to enet succeeded.");
-		this->ENetConnected = true;
-	}
-	else
-	{
-		/* Either the 5 seconds are up or a disconnect event was */
-		/* received. Reset the peer in the event the 5 seconds   */
-		/* had run out without any significant event.            */
-		enet_peer_reset(this->enetHost);
-		Log::Error("Connection to enet failed.");
-	}
-}
 
-void RocketLounge::ENetDisconnect()
-{
-	enet_host_destroy(this->enetClient);
-	enet_deinitialize();
-	this->ENetConnected = false;
-}
-
-void RocketLounge::ENetRelay(int timeout = 0)
-{
-	if (!this->ENetConnected) return;
-	ENetEvent event;
-	/* Wait up to 1000 milliseconds for an event. */
-	while (enet_host_service (this->enetClient, & event, timeout) > 0)
-	{
-		switch (event.type)
-		{
-		case ENET_EVENT_TYPE_CONNECT:
-			Log::Info("Client connected");
-			// Log::Info("IP: " + to_string(event.peer->address.host));
-			// Log::Info("PORT: " + to_string(event.peer->address.port));
-			/* Store any relevant client information here. */
-			// event.peer -> data = "Client information";
-			break;
-		case ENET_EVENT_TYPE_RECEIVE:
-			Log::Info("Packet received");
-			// string foo(event.packet->data, event.packet->dataLength);
-			// Log::Info(foo);
-			char buffer[512];
-			sprintf(buffer, "A packet of length %u containing %s was received from %s on channel %u.\n",
-                event.packet -> dataLength,
-                event.packet -> data,
-                event.peer -> data,
-                event.channelID);
-			Log::Info(string(buffer));
-			// Log::Info(string(to_string(event.packet->dataLength)));
-			// Log::Info(string(event.packet -> data));
-			// Log::Info(string(event.peer -> data));
-			// Log::Info(string(to_string(event.channelID)));
-			/* Clean up the packet now that we're done using it. */
-			enet_packet_destroy (event.packet);
-			
-			break;
-		
-		case ENET_EVENT_TYPE_DISCONNECT:
-			Log::Info("Disconnected");
-			// Log::Info(event.peer -> data);
-			/* Reset the peer's client information. */
-			event.peer -> data = NULL;
-		}
-	}
-}
-
-void RocketLounge::ENetSend()
-{
-	/* Create a reliable packet of size 7 containing "packet\0" */
-	ENetPacket * packet = enet_packet_create ("packet2", 
-											strlen ("packet2") + 1, 
-											ENET_PACKET_FLAG_RELIABLE);
-	/* Extend the packet so and append the string "foo", so it now */
-	/* contains "packetfoo\0"                                      */
-	// enet_packet_resize (packet, strlen ("packetfoo") + 1);
-	// strcpy (& packet -> data [strlen ("packet")], "foo");
-	/* Send the packet to the peer over channel id 0. */
-	/* One could also broadcast the packet by         */
-	/* enet_host_broadcast (host, 0, packet);         */
-	enet_peer_send (this->enetHost, 0, packet);
-}
 
 void RocketLounge::ToggleRecording()
 {
@@ -210,7 +116,7 @@ void RocketLounge::ToggleTrimming()
 
 bool RocketLounge::DataFlowAllowed()
 {
-	if (this->SioConnected)
+	if (this->SioConnected || this->ENetConnected)
 	{
 		if (gameWrapper->IsInFreeplay()) return true;
 		if (gameWrapper->IsInCustomTraining()) return true;
@@ -255,35 +161,37 @@ void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 	
 	CloneManager::ReflectClones();
 
-	sio::message::list self(this->MySlug);
-	for(int i = 1; i < (int)PlayerData::END_PLAYER_DATA; i++)
+	vector<string> payload = {};
+	for(int i = 0; i < (int)PlayerData::END; i++)
 	{
 		switch((PlayerData)i)
 		{
-			case PlayerData::DisplayName: 		self.push(sio::string_message::create(this->MyDisplayName)); 			break;
-			case PlayerData::BallLocationX: 	self.push(sio::string_message::create(to_string(ballLocation.X))); 		break;
-			case PlayerData::BallLocationY: 	self.push(sio::string_message::create(to_string(ballLocation.Y))); 		break;
-			case PlayerData::BallLocationZ: 	self.push(sio::string_message::create(to_string(ballLocation.Z))); 		break;
-			case PlayerData::BallVelocityX: 	self.push(sio::string_message::create(to_string(ballVelocity.X))); 		break;
-			case PlayerData::BallVelocityY: 	self.push(sio::string_message::create(to_string(ballVelocity.Y))); 		break;
-			case PlayerData::BallVelocityZ: 	self.push(sio::string_message::create(to_string(ballVelocity.Z))); 		break;
-			case PlayerData::BallRotationPitch: self.push(sio::string_message::create(to_string(ballRotation.Pitch))); 	break;
-			case PlayerData::BallRotationYaw: 	self.push(sio::string_message::create(to_string(ballRotation.Yaw))); 	break;
-			case PlayerData::BallRotationRoll: 	self.push(sio::string_message::create(to_string(ballRotation.Roll))); 	break;
-			case PlayerData::CarBody: 			self.push(sio::string_message::create(to_string(carBody))); 			break;
-			case PlayerData::CarLocationX: 		self.push(sio::string_message::create(to_string(carLocation.X))); 		break;
-			case PlayerData::CarLocationY: 		self.push(sio::string_message::create(to_string(carLocation.Y))); 		break;
-			case PlayerData::CarLocationZ: 		self.push(sio::string_message::create(to_string(carLocation.Z))); 		break;
-			case PlayerData::CarVelocityX: 		self.push(sio::string_message::create(to_string(carVelocity.X))); 		break;
-			case PlayerData::CarVelocityY: 		self.push(sio::string_message::create(to_string(carVelocity.Y))); 		break;
-			case PlayerData::CarVelocityZ: 		self.push(sio::string_message::create(to_string(carVelocity.Z))); 		break;
-			case PlayerData::CarRotationPitch: 	self.push(sio::string_message::create(to_string(carRotation.Pitch))); 	break;
-			case PlayerData::CarRotationYaw: 	self.push(sio::string_message::create(to_string(carRotation.Yaw))); 	break;
-			case PlayerData::CarRotationRoll: 	self.push(sio::string_message::create(to_string(carRotation.Roll))); 	break;
+			case PlayerData::Slug: 				payload.push_back(this->MySlug); 					break;
+			// case PlayerData::Version: 			payload.push_back(string(PluginVersion)); 			break;
+			case PlayerData::DisplayName: 		payload.push_back(this->MyDisplayName); 			break;
+			case PlayerData::BallLocationX: 	payload.push_back(to_string(ballLocation.X)); 		break;
+			case PlayerData::BallLocationY: 	payload.push_back(to_string(ballLocation.Y)); 		break;
+			case PlayerData::BallLocationZ: 	payload.push_back(to_string(ballLocation.Z)); 		break;
+			case PlayerData::BallVelocityX: 	payload.push_back(to_string(ballVelocity.X)); 		break;
+			case PlayerData::BallVelocityY: 	payload.push_back(to_string(ballVelocity.Y)); 		break;
+			case PlayerData::BallVelocityZ: 	payload.push_back(to_string(ballVelocity.Z)); 		break;
+			case PlayerData::BallRotationPitch: payload.push_back(to_string(ballRotation.Pitch)); 	break;
+			case PlayerData::BallRotationYaw: 	payload.push_back(to_string(ballRotation.Yaw)); 	break;
+			case PlayerData::BallRotationRoll: 	payload.push_back(to_string(ballRotation.Roll)); 	break;
+			case PlayerData::CarBody: 			payload.push_back(to_string(carBody)); 				break;
+			case PlayerData::CarLocationX: 		payload.push_back(to_string(carLocation.X)); 		break;
+			case PlayerData::CarLocationY: 		payload.push_back(to_string(carLocation.Y)); 		break;
+			case PlayerData::CarLocationZ: 		payload.push_back(to_string(carLocation.Z)); 		break;
+			case PlayerData::CarVelocityX: 		payload.push_back(to_string(carVelocity.X)); 		break;
+			case PlayerData::CarVelocityY: 		payload.push_back(to_string(carVelocity.Y)); 		break;
+			case PlayerData::CarVelocityZ: 		payload.push_back(to_string(carVelocity.Z)); 		break;
+			case PlayerData::CarRotationPitch: 	payload.push_back(to_string(carRotation.Pitch)); 	break;
+			case PlayerData::CarRotationYaw: 	payload.push_back(to_string(carRotation.Yaw)); 		break;
+			case PlayerData::CarRotationRoll: 	payload.push_back(to_string(carRotation.Roll)); 	break;
 		}
 	}
-	
-	this->SioEmit("self", self);
+
+	this->EmitPlayerEvent(payload);
 }
 
 int measuredTicks = 0;
@@ -307,6 +215,147 @@ void RocketLounge::MeasureTickRate()
 			measuredTicks++;
 		}
 	}
+}
+
+
+
+void RocketLounge::ENetConnect()
+{
+	ENetAddress address;
+	ENetEvent event;
+	/* Connect to some.server.net:1234. */
+	enet_address_set_host (&address, defaultENetHost.c_str());
+	// enet_address_set_host (&address, "127.0.0.1");
+	address.port = 7777;
+	/* Initiate the connection, allocating the two channels 0 and 1. */
+	this->enetHost = enet_host_connect(this->enetClient, & address, 2, 0);    
+	if (this->enetHost == NULL)
+	{
+		Log::Error("No available peers for initiating an ENet connection");
+		return;
+	}
+	/* Wait up to 5 seconds for the connection attempt to succeed. */
+	if (enet_host_service (this->enetClient, & event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
+	{
+		Log::Info("Connection to enet succeeded.");
+		this->ENetConnected = true;
+	}
+	else
+	{
+		/* Either the 5 seconds are up or a disconnect event was */
+		/* received. Reset the peer in the event the 5 seconds   */
+		/* had run out without any significant event.            */
+		enet_peer_reset(this->enetHost);
+		Log::Error("Connection to enet failed.");
+	}
+}
+
+void RocketLounge::ENetDisconnect()
+{
+	enet_host_destroy(this->enetClient);
+	enet_deinitialize();
+	this->ENetConnected = false;
+}
+
+void RocketLounge::ENetRelay(int timeout)
+{
+	if (!this->ENetConnected) return;
+	ENetEvent event;
+	/* Wait up to 1000 milliseconds for an event. */
+	while (enet_host_service (this->enetClient, & event, timeout) > 0)
+	{
+		switch (event.type)
+		{
+			case ENET_EVENT_TYPE_CONNECT:
+				Log::Info("Client connected");
+				break;
+			case ENET_EVENT_TYPE_RECEIVE:
+				char buffer[420];
+				sprintf(buffer, "%s", event.packet -> data);
+				enet_packet_destroy (event.packet);
+				break;
+			case ENET_EVENT_TYPE_DISCONNECT:
+				Log::Info("Disconnected");
+				event.peer -> data = NULL;
+		}
+	}
+}
+
+void RocketLounge::ENetEmit(vector<string> payload)
+{
+	string payloadStr = "";
+	for(int i = 0; i < payload.size(); i++)
+	{
+		if (i) payloadStr += this->enetDelim;
+		payloadStr += payload.at(i);
+	}
+	auto payloadCStr = payloadStr.c_str();
+	ENetPacket *packet = enet_packet_create(payloadCStr, strlen (payloadCStr) + 1, ENET_PACKET_FLAG_RELIABLE);
+	enet_peer_send (this->enetHost, 0, packet);
+}
+void RocketLounge::ENetReceive(string payloadStr)
+{
+	size_t pos = 0;
+    std::string token;
+    vector<string> payloadVector = {};
+    while ((pos = payloadStr.find(this->enetDelim)) != std::string::npos) {
+        token = payloadStr.substr(0, pos);
+        payloadVector.push_back(token);
+        payloadStr.erase(0, pos + this->enetDelim.length());
+    }
+    payloadVector.push_back(payloadStr);
+    this->IncomingPlayerEvent(payloadVector);
+}
+
+void RocketLounge::EmitPlayerEvent(vector<string> v)
+{
+	if (this->ENetConnected) return this->ENetEmit(v);
+
+	sio::message::list payload(v.at(0));
+	for(int i = 1; i < v.size(); i++) payload.push(sio::string_message::create(v.at(i)));
+	this->SioEmit("self", payload);
+}
+
+void RocketLounge::IncomingPlayerEvent(vector<string> pieces)
+{
+	if (!this->DataFlowAllowed()) return;
+	if (pieces.size() != (int)PlayerData::END) return;
+	string slug = pieces.at((int)PlayerData::Slug);
+	string displayName = pieces.at((int)PlayerData::DisplayName);
+	int carBody = stoi(pieces.at((int)PlayerData::CarBody));
+	if (!this->SlugLastSeen.count(slug) && slug != this->MySlug)
+	{
+		Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
+	}
+	this->SlugLastSeen[slug] = timestamp();
+	this->SlugDisplayNames[slug] = displayName;
+	if (!this->SlugSubs.count(slug)) return;
+	CloneManager::UseClone(slug, displayName, carBody)->SetBall({
+		stof(pieces.at((int)PlayerData::BallLocationX)),
+		stof(pieces.at((int)PlayerData::BallLocationY)),
+		stof(pieces.at((int)PlayerData::BallLocationZ)),
+	}, {
+		stof(pieces.at((int)PlayerData::BallVelocityX)),
+		stof(pieces.at((int)PlayerData::BallVelocityY)),
+		stof(pieces.at((int)PlayerData::BallVelocityZ)),
+	}, {
+		stoi(pieces.at((int)PlayerData::BallRotationPitch)),
+		stoi(pieces.at((int)PlayerData::BallRotationYaw)),
+		stoi(pieces.at((int)PlayerData::BallRotationRoll)),
+	});
+	CloneManager::UseClone(slug, displayName, carBody)->SetCar({
+		stof(pieces.at((int)PlayerData::CarLocationX)),
+		stof(pieces.at((int)PlayerData::CarLocationY)),
+		stof(pieces.at((int)PlayerData::CarLocationZ)),
+	}, {
+		stof(pieces.at((int)PlayerData::CarVelocityX)),
+		stof(pieces.at((int)PlayerData::CarVelocityY)),
+		stof(pieces.at((int)PlayerData::CarVelocityZ)),
+	}, {
+		stoi(pieces.at((int)PlayerData::CarRotationPitch)),
+		stoi(pieces.at((int)PlayerData::CarRotationYaw)),
+		stoi(pieces.at((int)PlayerData::CarRotationRoll)),
+	});
 }
 
 void RocketLounge::SioDisconnect()
@@ -355,45 +404,10 @@ void RocketLounge::SioConnect()
 		this->ShowChatMessage(this->SlugDisplayNames[slug], pieces.at(1)->get_string());
 	});
 	this->io.socket()->on("player", [this](sio::event& ev) {
-		if (!this->DataFlowAllowed()) return;
-		auto pieces = ev.get_messages();
-		if (pieces.size() != (int)PlayerData::END_PLAYER_DATA) return;
-		string slug = pieces.at((int)PlayerData::Slug)->get_string();
-		string displayName = pieces.at((int)PlayerData::DisplayName)->get_string();
-		string carBodyStr = pieces.at((int)PlayerData::CarBody)->get_string();
-		if (!this->SlugLastSeen.count(slug) && slug != this->MySlug)
-		{
-			Global::Notify::Success("New player available", "You can now add " + displayName + " to your session");
-		}
-		this->SlugLastSeen[slug] = timestamp();
-		this->SlugDisplayNames[slug] = displayName;
-		if (!this->SlugSubs.count(slug)) return;
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetBall({
-			stof(pieces.at((int)PlayerData::BallLocationX)->get_string()),
-			stof(pieces.at((int)PlayerData::BallLocationY)->get_string()),
-			stof(pieces.at((int)PlayerData::BallLocationZ)->get_string()),
-		}, {
-			stof(pieces.at((int)PlayerData::BallVelocityX)->get_string()),
-			stof(pieces.at((int)PlayerData::BallVelocityY)->get_string()),
-			stof(pieces.at((int)PlayerData::BallVelocityZ)->get_string()),
-		}, {
-			stoi(pieces.at((int)PlayerData::BallRotationPitch)->get_string()),
-			stoi(pieces.at((int)PlayerData::BallRotationYaw)->get_string()),
-			stoi(pieces.at((int)PlayerData::BallRotationRoll)->get_string()),
-		});
-		CloneManager::UseClone(slug, displayName, stoi(carBodyStr))->SetCar({
-			stof(pieces.at((int)PlayerData::CarLocationX)->get_string()),
-			stof(pieces.at((int)PlayerData::CarLocationY)->get_string()),
-			stof(pieces.at((int)PlayerData::CarLocationZ)->get_string()),
-		}, {
-			stof(pieces.at((int)PlayerData::CarVelocityX)->get_string()),
-			stof(pieces.at((int)PlayerData::CarVelocityY)->get_string()),
-			stof(pieces.at((int)PlayerData::CarVelocityZ)->get_string()),
-		}, {
-			stoi(pieces.at((int)PlayerData::CarRotationPitch)->get_string()),
-			stoi(pieces.at((int)PlayerData::CarRotationYaw)->get_string()),
-			stoi(pieces.at((int)PlayerData::CarRotationRoll)->get_string()),
-		});
+		auto payload = ev.get_messages();
+		vector<string> v = {};
+		for(int i = 0; i < payload.size(); i++) v.push_back(payload.at(i)->get_string());
+		this->IncomingPlayerEvent(v);
 	});
 }
 // Emit in separate thread to reduce performance impact
@@ -413,10 +427,6 @@ void RocketLounge::RenderSettings()
 {
 
 	ImGui::NewLine();
-	if (ImGui::Button(this->ENetConnected ? "ENet Disconnect" : "ENet Connect"))
-		this->ENetConnected ? this->ENetDisconnect() : this->ENetConnect();
-	if (ImGui::Button("ENet Send")) this->ENetSend();
-	ImGui::NewLine();
 	ImGui::Columns(2, "split", false);
 
 	int red = !this->SioConnected ? 255 : 0;
@@ -427,15 +437,22 @@ void RocketLounge::RenderSettings()
 	string tickRateLabel = "   Tick Rate: " + to_string(this->MyTickRate);
 	ImGui::Text(tickRateLabel.c_str());
 	ImGui::SameLine();
-	ImGui::Text("\t\t\t\t\t\t\t");
+	// ImGui::Text("\t\t\t\t\t\t\t");
+	ImGui::Text("\t\t\t");
 	ImGui::SameLine();
 	if (ImGui::Button(this->SioConnected ? "   Disconnect   " : "     Connect     "))
 	{
 		if (this->SioConnected) this->SioDisconnect();
 		else this->SioConnect();
 	}
+	ImGui::SameLine();
+	if (ImGui::Button(this->ENetConnected ? " Disconnect ENet " : "  Connect ENet  "))
+	{
+		if (this->ENetConnected) this->ENetDisconnect();
+		else this->ENetConnect();
+	}
 	
-	if (this->SioConnected)
+	if (this->SioConnected || this->ENetConnected)
 	{
 		ImGui::NewLine();
 		string recordLabel = "   " + string(this->IsRecording ? "Save Recording" : "Start Recording") + "   ";
@@ -463,7 +480,7 @@ void RocketLounge::RenderSettings()
     ImGui::NextColumn();
     ImGui::BeginChild("right");
 
-	if (this->SioConnected)
+	if (this->SioConnected || this->ENetConnected)
 	{
 		ImGui::Columns(2, "split", false);
 
