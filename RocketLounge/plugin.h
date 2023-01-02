@@ -1,6 +1,4 @@
 #pragma once
-#pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib, "winmm.lib")
 #pragma warning(disable:4996)
 // Above line prevents compilation error:
 // 'PlayerReplicationInfoWrapper::GetUniqueId': Use GetUniqueIdWrapper instead
