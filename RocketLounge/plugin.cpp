@@ -11,8 +11,6 @@ using namespace std;
 
 // string defaultSioHost = "http://localhost:8080";
 string defaultSioHost = "http://rocketlounge.gg";
-// string defaultENetHost = "127.0.0.1";
-string defaultENetHost = "76.193.125.245";
 string FilterPlaceholder = "Filter...";
 
 const char * PluginName = "A1 Rocket Lounge"; // To change DLL filename use <TargetName> in *.vcxproj
@@ -49,28 +47,12 @@ enum class PlayerData
 
 void RocketLounge::onLoad()
 {
-	if (enet_initialize() != 0)
-    {
-        Log::Error("ENet initialization failure");
-    }
-
-	this->enetClient = enet_host_create (NULL /* create a client host */,
-				1 /* only allow 1 outgoing connection */,
-				2 /* allow up 2 channels to be used, 0 and 1 */,
-				0 /* assume any amount of incoming bandwidth */,
-				0 /* assume any amount of outgoing bandwidth */);
-	if (this->enetClient == NULL)
-	{
-        Log::Error("An error occurred while trying to create an ENet client host");
-	}
-
 	Global::GameWrapper = gameWrapper;
 	Global::CvarManager = cvarManager;
 
 	Log::SetPrintLevel(Log::Level::Info);
 	Log::SetWriteLevel(Log::Level::Info);
 
-	new Cvar("use_enet", false);
 	new Cvar("api_host", defaultSioHost);
 	new Cvar("ui_use_slugs", false);
 	new Cvar("enable_chase", false);
@@ -80,7 +62,7 @@ void RocketLounge::onLoad()
 
 	// Auto connect API if we can...
 	int HALF_SECOND = 500; // I really hate magic numbers
-	// setTimeout([=](){ this->SioConnect(); this->ENetConnect(); }, HALF_SECOND);
+	setTimeout([=](){ this->SioConnect(); }, HALF_SECOND);
 	
 	map<string, void (RocketLounge::*)(ServerWrapper c, void *p, string e)> ListenerMap =
 	{
@@ -96,11 +78,8 @@ void RocketLounge::onLoad()
 
 void RocketLounge::onUnload()
 {
-	this->ENetDisconnect();
 	this->SioDisconnect();
 }
-
-
 
 void RocketLounge::ToggleRecording()
 {
@@ -116,7 +95,7 @@ void RocketLounge::ToggleTrimming()
 
 bool RocketLounge::DataFlowAllowed()
 {
-	if (this->SioConnected || this->ENetConnected)
+	if (this->SioConnected)
 	{
 		if (gameWrapper->IsInFreeplay()) return true;
 		if (gameWrapper->IsInCustomTraining()) return true;
@@ -134,7 +113,6 @@ void RocketLounge::DestroyStuff()
 
 void RocketLounge::onTick(ServerWrapper caller, void* params, string eventName)
 {
-	this->ENetRelay();
 	if (!this->DataFlowAllowed()) return this->DestroyStuff();
 	this->MeasureTickRate();
 
@@ -226,101 +204,8 @@ void RocketLounge::MeasureTickRate()
 	}
 }
 
-
-
-void RocketLounge::ENetConnect()
-{
-	ENetAddress address;
-	ENetEvent event;
-	/* Connect to some.server.net:1234. */
-	enet_address_set_host (&address, defaultENetHost.c_str());
-	// enet_address_set_host (&address, "127.0.0.1");
-	address.port = 7777;
-	/* Initiate the connection, allocating the two channels 0 and 1. */
-	this->enetHost = enet_host_connect(this->enetClient, & address, 2, 0);    
-	if (this->enetHost == NULL)
-	{
-		Log::Error("No available peers for initiating an ENet connection");
-		return;
-	}
-	/* Wait up to 5 seconds for the connection attempt to succeed. */
-	if (enet_host_service (this->enetClient, & event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
-	{
-		Log::Info("Connection to enet succeeded.");
-		this->ENetConnected = true;
-	}
-	else
-	{
-		/* Either the 5 seconds are up or a disconnect event was */
-		/* received. Reset the peer in the event the 5 seconds   */
-		/* had run out without any significant event.            */
-		enet_peer_reset(this->enetHost);
-		Log::Error("Connection to enet failed.");
-	}
-}
-
-void RocketLounge::ENetDisconnect()
-{
-	enet_host_destroy(this->enetClient);
-	enet_deinitialize();
-	this->ENetConnected = false;
-}
-
-void RocketLounge::ENetRelay(int timeout)
-{
-	if (!this->ENetConnected) return;
-	ENetEvent event;
-	/* Wait up to 1000 milliseconds for an event. */
-	while (enet_host_service (this->enetClient, & event, timeout) > 0)
-	{
-		switch (event.type)
-		{
-			case ENET_EVENT_TYPE_CONNECT:
-				Log::Info("Client connected");
-				break;
-			case ENET_EVENT_TYPE_RECEIVE:
-				char buffer[420];
-				sprintf(buffer, "%s", event.packet -> data);
-				this->ENetReceive(string(buffer));
-				enet_packet_destroy (event.packet);
-				break;
-			case ENET_EVENT_TYPE_DISCONNECT:
-				Log::Info("Disconnected");
-				event.peer -> data = NULL;
-		}
-	}
-}
-
-void RocketLounge::ENetEmit(vector<string> payload)
-{
-	string payloadStr = "";
-	for(int i = 0; i < payload.size(); i++)
-	{
-		if (i) payloadStr += this->enetDelim;
-		payloadStr += payload.at(i);
-	}
-	auto payloadCStr = payloadStr.c_str();
-	ENetPacket *packet = enet_packet_create(payloadCStr, strlen (payloadCStr) + 1, ENET_PACKET_FLAG_RELIABLE);
-	enet_peer_send (this->enetHost, 0, packet);
-}
-void RocketLounge::ENetReceive(string payloadStr)
-{
-	size_t pos = 0;
-    std::string token;
-    vector<string> payloadVector = {};
-    while ((pos = payloadStr.find(this->enetDelim)) != std::string::npos) {
-        token = payloadStr.substr(0, pos);
-        payloadVector.push_back(token);
-        payloadStr.erase(0, pos + this->enetDelim.length());
-    }
-    payloadVector.push_back(payloadStr);
-    this->IncomingPlayerEvent(payloadVector);
-}
-
 void RocketLounge::EmitPlayerEvent(vector<string> v)
 {
-	if (this->ENetConnected) return this->ENetEmit(v);
-
 	sio::message::list payload(v.at(0));
 	for(int i = 1; i < v.size(); i++) payload.push(sio::string_message::create(v.at(i)));
 	this->SioEmit("self", payload);
@@ -455,14 +340,8 @@ void RocketLounge::RenderSettings()
 		if (this->SioConnected) this->SioDisconnect();
 		else this->SioConnect();
 	}
-	ImGui::SameLine();
-	if (ImGui::Button(this->ENetConnected ? " Disconnect ENet " : "  Connect ENet  "))
-	{
-		if (this->ENetConnected) this->ENetDisconnect();
-		else this->ENetConnect();
-	}
 	
-	if (this->SioConnected || this->ENetConnected)
+	if (this->SioConnected)
 	{
 		ImGui::NewLine();
 		string recordLabel = "   " + string(this->IsRecording ? "Save Recording" : "Start Recording") + "   ";
@@ -470,9 +349,9 @@ void RocketLounge::RenderSettings()
 		if (ImGui::Button(recordLabel.c_str())) this->ToggleRecording();
 		ImGui::SameLine();
 		if (ImGui::Button(trimLabel.c_str())) this->ToggleTrimming();
-		// ImGui::SameLine();
+		ImGui::SameLine();
 		Cvar::Get("enable_collisions")->RenderCheckbox(" Collisions ");
-		// ImGui::SameLine();
+		ImGui::SameLine();
 		Cvar::Get("enable_chase")->RenderCheckbox(" Chase Me! ");
 		ImGui::NewLine();
 
@@ -490,7 +369,7 @@ void RocketLounge::RenderSettings()
     ImGui::NextColumn();
     ImGui::BeginChild("right");
 
-	if (this->SioConnected || this->ENetConnected)
+	if (this->SioConnected)
 	{
 		ImGui::Columns(2, "split", false);
 

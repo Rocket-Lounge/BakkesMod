@@ -6,7 +6,6 @@
 // 'PlayerReplicationInfoWrapper::GetUniqueId': Use GetUniqueIdWrapper instead
 
 #include <string>
-#include <enet/enet.h>
 #include <sio_client.h>
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
@@ -52,17 +51,6 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	bool DataFlowAllowed();
 	void DestroyStuff();
 
-	// ENet specific implementation
-	string enetDelim = "|";
-	ENetHost * enetClient;
-	ENetPeer * enetHost;
-	bool ENetConnected = false;
-	void ENetConnect();
-	void ENetDisconnect();
-	void ENetRelay(int timeout = 0);
-	void ENetEmit(vector<string> payload);
-	void ENetReceive(string rawPayload);
-
 	// Socket.io specific implementation
 	sio::client io;
     bool SioConnected = false;
@@ -72,7 +60,7 @@ class RocketLounge: public BakkesMod::Plugin::BakkesModPlugin, public BakkesMod:
 	void SioEmit(string event, string payload);
 	void SioEmit(string event, sio::message::list const& payload);
 
-	// Generic wrappers that can use both ENet and Socket.io
+	// Generic wrappers that can remain protocol agnostic
 	void EmitPlayerEvent(vector<string> payload);
 	void IncomingPlayerEvent(vector<string> payload);
 

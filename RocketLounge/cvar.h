@@ -7,7 +7,7 @@ using namespace std;
 
 class Cvar {
     public:
-    inline static string prefix = "dandroid_";
+    inline static string prefix = "rocketlounge_";
     inline static map<string, Cvar *> Map;
     inline static enum class DataType { Str, Int, Bool, Float };
     static Cvar * Get(string cvarName) { return Cvar::Map[cvarName]; }
