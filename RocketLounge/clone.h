@@ -218,8 +218,8 @@ class CloneManager
         if (!CloneManager::CloneMap.count(slug)) return;
         auto clone = CloneManager::CloneMap[slug];
         Log::Info("Removing " + slug);
-        clone->DestroyCar();
         clone->DestroyBall();
+        clone->DestroyCar();
         CloneManager::CloneMap.erase(slug);
         Log::Info("Lookup key removed for " + slug);
     }
