@@ -102,6 +102,7 @@ void RocketLounge::ENetConnect()
 	ENetAddress address;
 	ENetEvent event;
 	/* Connect to some.server.net:1234. */
+	// enet_address_set_host (&address, "76.193.125.245");
 	enet_address_set_host (&address, "127.0.0.1");
 	address.port = 7777;
 	/* Initiate the connection, allocating the two channels 0 and 1. */
@@ -152,7 +153,15 @@ void RocketLounge::ENetRelay(int timeout = 0)
 			break;
 		case ENET_EVENT_TYPE_RECEIVE:
 			Log::Info("Packet received");
-			// Log::Info(event.packet -> data);
+			// string foo(event.packet->data, event.packet->dataLength);
+			// Log::Info(foo);
+			char buffer[512];
+			sprintf(buffer, "A packet of length %u containing %s was received from %s on channel %u.\n",
+                event.packet -> dataLength,
+                event.packet -> data,
+                event.peer -> data,
+                event.channelID);
+			Log::Info(string(buffer));
 			// Log::Info(string(to_string(event.packet->dataLength)));
 			// Log::Info(string(event.packet -> data));
 			// Log::Info(string(event.peer -> data));
@@ -174,8 +183,8 @@ void RocketLounge::ENetRelay(int timeout = 0)
 void RocketLounge::ENetSend()
 {
 	/* Create a reliable packet of size 7 containing "packet\0" */
-	ENetPacket * packet = enet_packet_create ("packet", 
-											strlen ("packet") + 1, 
+	ENetPacket * packet = enet_packet_create ("packet2", 
+											strlen ("packet2") + 1, 
 											ENET_PACKET_FLAG_RELIABLE);
 	/* Extend the packet so and append the string "foo", so it now */
 	/* contains "packetfoo\0"                                      */
